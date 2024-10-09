@@ -4,6 +4,7 @@
 #include <limits>
 #include <cmath>
 #include <atomic>
+#include <algorithm>
 
 #ifdef WINDOWS // completely untested!
 #	include <windows.h>
