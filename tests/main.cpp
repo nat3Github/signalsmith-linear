@@ -130,6 +130,29 @@ struct SignalsmithDSPWrapper {
 	}
 };
 
+#define KISSFFT_DATATYPE float
+#include "others/kissfft/kiss_fft.h"
+struct KissFloatWrapper {
+	kiss_fft_cfg cfg;
+	bool hasConfig = false;
+	
+	~KissFloatWrapper() {
+		if (hasConfig) kiss_fft_free(cfg);
+	}
+
+	void prepare(int size, int) {
+		if (hasConfig) kiss_fft_free(cfg);
+		cfg = kiss_fft_alloc(size, false, 0, 0);
+		hasConfig = true;
+	}
+	
+	template<class Data>
+	double run(Data &data) {
+		kiss_fft(cfg, (kiss_fft_cpx *)data.input.data(), (kiss_fft_cpx *)data.output.data());
+		return data.output[0].real();
+	}
+};
+
 #include <Accelerate/Accelerate.h>
 struct AccelerateFloatWrapper {
 	bool hasSetup = false;
@@ -214,6 +237,7 @@ int main() {
 	Runner<SignalsmithDSPWrapper<float>> dspFloat("DSP library (float)", plot.line(), legend);
 	Runner<AccelerateDoubleWrapper> accelerateDouble("Accelerate (double)", plot.line(), legend);
 	Runner<AccelerateFloatWrapper> accelerateFloat("Accelerate (float)", plot.line(), legend);
+	Runner<KissFloatWrapper> kissFloat("KISS (float)", plot.line(), legend);
 
 	int maxSize = 65536*8;
 	bool first = true;
@@ -230,6 +254,7 @@ int main() {
 		dspFloat.run(x, dataFloat);
 		accelerateDouble.run(x, dataDouble);
 		accelerateFloat.run(x, dataFloat);
+		kissFloat.run(x, dataFloat);
 
 		if (first) {
 			first = false;
