@@ -98,6 +98,22 @@ struct SimpleWrapper {
 	}
 };
 
+#include "../split-fft.h"
+template<class Sample>
+struct SplitWrapper {
+	signalsmith::fft2::SplitFFT<Sample> fft;
+
+	void prepare(int size, int) {
+		fft.resize(size);
+	}
+	
+	template<class Data>
+	double run(Data &data) {
+		fft.fft(data.input.data(), data.output.data());
+		return data.output[0].real();
+	}
+};
+
 #include "./others/signalsmith-fft.h"
 template<class Sample>
 struct SignalsmithFFTWrapper {
@@ -231,8 +247,8 @@ int main() {
 	auto &legend = plot.legend(0, 1);
 	Runner<SimpleWrapper<double>> simpleDouble("simple (double)", plot.line(), legend);
 	Runner<SimpleWrapper<float>> simpleFloat("simple (float)", plot.line(), legend);
-//	Runner<SignalsmithFFTWrapper<double>> signalsmithDouble("Signalsmith (double)", plot.line(), legend);
-//	Runner<SignalsmithFFTWrapper<float>> signalsmithFloat("Signalsmith (float)", plot.line(), legend);
+	Runner<SplitWrapper<double>> splitDouble("split (double)", plot.line(), legend);
+	Runner<SplitWrapper<float>> splitFloat("split (float)", plot.line(), legend);
 	Runner<SignalsmithDSPWrapper<double>> dspDouble("DSP library (double)", plot.line(), legend);
 	Runner<SignalsmithDSPWrapper<float>> dspFloat("DSP library (float)", plot.line(), legend);
 	Runner<AccelerateDoubleWrapper> accelerateDouble("Accelerate (double)", plot.line(), legend);
@@ -248,8 +264,8 @@ int main() {
 		
 		simpleDouble.run(x, dataDouble);
 		simpleFloat.run(x, dataFloat);
-//		signalsmithDouble.run(x, dataDouble);
-//		signalsmithFloat.run(x, dataFloat);
+		splitDouble.run(x, dataDouble);
+		splitFloat.run(x, dataFloat);
 		dspDouble.run(x, dataDouble);
 		dspFloat.run(x, dataFloat);
 		accelerateDouble.run(x, dataDouble);
