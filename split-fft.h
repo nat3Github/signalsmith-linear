@@ -161,10 +161,14 @@ private:
 	
 	void fftStep(size_t s, const Complex *time, Complex *freq) {
 		if (s == 0) {
-			for (size_t i = 0; i < innerSize; ++i) {
-				tmpTime[i] = time[i*outerSize];
+			const Complex *input = time;
+			if (outerSize != 1) {
+				input = tmpTime.data();
+				for (size_t i = 0; i < innerSize; ++i) {
+					tmpTime[i] = time[i*outerSize];
+				}
 			}
-			innerFFT.fft(innerSize, tmpTime.data(), freq);
+			innerFFT.fft(innerSize, input, freq);
 			if (!finalPass) {
 				// We're doing the DFT as part of these passes, so duplicate this one
 				for (size_t s = 1; s < outerSize; ++s) {
