@@ -12,7 +12,7 @@ namespace signalsmith { namespace fft2 {
 template<typename Sample>
 struct SplitFFT {
 	using Complex = std::complex<Sample>;
-	static constexpr size_t maxSplit = 8;
+	static constexpr size_t maxSplit = 4;
 	static constexpr size_t minInnerSize = 8;
 	
 	SplitFFT(size_t size=0) {
@@ -45,9 +45,9 @@ struct SplitFFT {
 			dftTwists[s] = std::polar(Sample(1), dftPhase);
 		}
 
-		outerPasses = 0;
-		if (outerSize == 8) {
-			outerPasses = 3;
+		finalPass = false;
+		if (outerSize == 4) {
+			finalPass = true;
 		}
 	}
 	
@@ -55,11 +55,11 @@ struct SplitFFT {
 		return innerSize*outerSize;
 	}
 	size_t steps() const {
-		return outerSize + outerPasses;
+		return outerSize + (finalPass ? 1 : 0);
 	}
 	
 	void fft(const Complex *time, Complex *freq) {
-		for (size_t s = 0; s < outerSize; ++s) {
+		for (size_t s = 0; s < steps(); ++s) {
 			fftStep(s, time, freq);
 		}
 	}
@@ -69,7 +69,8 @@ struct SplitFFT {
 		innerFFT.ifft(innerSize, time, freq);
 	}
 private:
-	size_t innerSize, outerSize, outerPasses;
+	size_t innerSize, outerSize;
+	bool finalPass;
 	std::vector<Complex> tmpTime, tmpFreq;
 	std::vector<Complex> outerTwiddles;
 	std::vector<Complex> dftTwists;
@@ -83,9 +84,12 @@ private:
 				tmpTime[i] = time[i*outerSize];
 			}
 			innerFFT.fft(innerSize, tmpTime.data(), freq);
-			for (size_t s = 1; s < outerSize; ++s) {
-				for (size_t i = 0; i < innerSize; ++i) {
-					freq[i + s*innerSize] = freq[i];
+			if (!finalPass) {
+				// We're doing the DFT as part of these passes, so duplicate this one
+				for (size_t s = 1; s < outerSize; ++s) {
+					for (size_t i = 0; i < innerSize; ++i) {
+						freq[i + s*innerSize] = freq[i];
+					}
 				}
 			}
 		} else if (s < outerSize) {
@@ -95,7 +99,12 @@ private:
 			innerFFT.fft(innerSize, tmpTime.data(), tmpFreq.data());
 			
 			auto *twiddles = outerTwiddles.data() + s*innerSize;
-			if (outerPasses == 0) {
+			if (finalPass) {
+				// We'll do the final DFT in-place, as extra passes
+				for (size_t i = 0; i < innerSize; ++i) {
+					freq[i + s*innerSize] = tmpFreq[i]*twiddles[i];
+				}
+			} else {
 				// We have to do the final DFT right here
 				for (size_t i = 0; i < innerSize; ++i) {
 					Complex v = tmpFreq[i]*twiddles[i];
@@ -109,24 +118,21 @@ private:
 						freq[i + f*innerSize] += tmpFreq[i]*dftTwist;
 					}
 				}
-			} else {
-				// We'll do the final DFT in-place, as extra passes
-				for (size_t i = 0; i < innerSize; ++i) {
-					freq[i] = tmpFreq[i]*twiddles[i];
-				}
 			}
 		} else {
-			size_t outerPass = s - outerSize;
-			size_t divisor = 1<<(outerPasses - outerPass); // 2 on the final pass, 4 on the one before etc.
-			size_t subSize = innerSize*outerSize/divisor;
-			for (size_t d = 0; d < divisor; ++d) {
-				auto *f0 = freq + subSize*2*d;
-				auto *f1 = freq + subSize*2*(d + 1);
-				for (size_t i = 0; i < subSize; ++i) {
-					Complex a = f0[i], b = f1[i];
-					f0[i] = a + b;
-					f1[i] = a - b;
-				}
+			auto *f0 = freq;
+			auto *f1 = freq + innerSize;
+			auto *f2 = freq + innerSize*2;
+			auto *f3 = freq + innerSize*3;
+			for (size_t i = 0; i < innerSize; ++i) {
+				Complex a = f0[i], b = f1[i], c = f2[i], d = f3[i];
+				
+				Complex ac0 = a + c, ac1 = a - c;
+				Complex bd0 = b + d, bd1 = b - d;
+				f0[i] = ac0 + bd0;
+				f1[i] = ac1 + bd1*Complex{0, -1};
+				f2[i] = ac0 - bd0;
+				f3[i] = ac1 - bd1*Complex{0, -1};
 			}
 		}
 	}
