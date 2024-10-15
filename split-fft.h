@@ -6,10 +6,81 @@
 #include <complex>
 #include <vector>
 
+#define SIGNALSMITH_USE_VDSP
+#include <Accelerate/Accelerate.h>
+
 namespace signalsmith { namespace fft2 {
 
 template<typename Sample>
 struct SplitFFTInner : public SimpleFFT<Sample> {};
+
+// Accelerate
+#ifdef SIGNALSMITH_USE_VDSP
+template<>
+struct SplitFFTInner<float> {
+	using Complex = std::complex<float>;
+	
+	bool hasSetup = false;
+	FFTSetup fftSetup;
+	int log2 = 0;
+	
+	std::vector<float> splitReal, splitImag;
+
+	SplitFFTInner() {}
+	~SplitFFTInner() {
+		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
+	}
+	
+	void resize(int size) {
+		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
+		log2 = std::round(std::log2(size));
+		fftSetup =  vDSP_create_fftsetup(log2, FFT_RADIX2);
+		hasSetup = true;
+		
+		splitReal.resize(size);
+		splitImag.resize(size);
+	}
+	
+	void fft(size_t size, const Complex *input, Complex *output) {
+		DSPSplitComplex splitComplex{splitReal.data(), splitImag.data()};
+		vDSP_ctoz((DSPComplex *)input, 2, &splitComplex, 1, size);
+		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
+		vDSP_ztoc(&splitComplex, 1, (DSPComplex *)output, 2, size);
+	}
+};
+template<>
+struct SplitFFTInner<double> {
+	using Complex = std::complex<double>;
+	
+	bool hasSetup = false;
+	FFTSetupD fftSetup;
+	int log2 = 0;
+	
+	std::vector<double> splitReal, splitImag;
+
+	SplitFFTInner() {}
+	~SplitFFTInner() {
+		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
+	}
+	
+	void resize(int size) {
+		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
+		log2 = std::round(std::log2(size));
+		fftSetup =  vDSP_create_fftsetupD(log2, FFT_RADIX2);
+		hasSetup = true;
+		
+		splitReal.resize(size);
+		splitImag.resize(size);
+	}
+	
+	void fft(size_t size, const Complex *input, Complex *output) {
+		DSPDoubleSplitComplex splitComplex{splitReal.data(), splitImag.data()};
+		vDSP_ctozD((DSPDoubleComplex *)input, 2, &splitComplex, 1, size);
+		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
+		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex *)output, 2, size);
+	}
+};
+#endif
 
 /// An FFT which can be computed in chunks
 template<typename Sample>
