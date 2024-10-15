@@ -6,8 +6,9 @@
 #include <complex>
 #include <vector>
 
-#define SIGNALSMITH_USE_VDSP
+#ifdef SIGNALSMITH_USE_ACCELERATE
 #include <Accelerate/Accelerate.h>
+#endif
 
 namespace signalsmith { namespace fft2 {
 
@@ -15,7 +16,7 @@ template<typename Sample>
 struct SplitFFTInner : public SimpleFFT<Sample> {};
 
 // Accelerate
-#ifdef SIGNALSMITH_USE_VDSP
+#ifdef SIGNALSMITH_USE_ACCELERATE
 template<>
 struct SplitFFTInner<float> {
 	using Complex = std::complex<float>;
