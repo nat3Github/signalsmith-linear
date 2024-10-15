@@ -27,8 +27,17 @@ struct SplitFFT {
 			innerSize *= 2;
 			outerSize /= 2;
 		}
-		tmpTime.resize(std::max(innerSize, outerSize));
+		tmpTime.resize(innerSize);
+		tmpFreq.resize(innerSize);
 		innerFFT.resize(innerSize);
+		
+		outerTwiddles.resize(innerSize*outerSize);
+		for (size_t i = 0; i < innerSize; ++i) {
+			for (size_t s = 0; s < outerSize; ++s) {
+				Sample twiddlePhase = Sample(-2*M_PI*i/innerSize*s/outerSize);
+				outerTwiddles[i + s*innerSize] = std::polar(Sample(1), twiddlePhase);
+			}
+		}
 	}
 	
 	size_t size() const {
@@ -40,44 +49,54 @@ struct SplitFFT {
 	
 	void fft(const Complex *time, Complex *freq) {
 		for (size_t s = 0; s < outerSize; ++s) {
-			for (size_t i = 0; i < innerSize; ++i) {
-				tmpTime[i] = time[s + i*outerSize];
-			}
-			innerFFT.fft(innerSize, tmpTime.data(), freq + s*innerSize);
-		}
-		if (outerSize > 1) {
-			for (size_t i = 0; i < innerSize; ++i) {
-				Sample twiddlePhase = Sample(-2*M_PI*i/innerSize/outerSize);
-
-				// Copy and apply twiddles
-				for (size_t s = 0; s < outerSize; ++s) {
-					Complex twiddle = std::polar(Sample(1), twiddlePhase*s);
-					tmpTime[s] = freq[i + s*innerSize]*twiddle;
-				}
-
-				// Naive DFT, write results in-place
-				for (size_t f = 0; f < outerSize; ++f) {
-					Complex sum = 0;
-					for (size_t s = 0; s < outerSize; ++s) {
-						Sample dftPhase = Sample(-2*M_PI*f/outerSize*s);
-						Complex dftTwist = std::polar(Sample(1), dftPhase);
-						sum += tmpTime[s]*dftTwist;
-					}
-					freq[i + f*innerSize] = sum;
-				}
-			}
+			fftStep(s, time, freq);
 		}
 	}
 
 	void ifft(const Complex *freq, Complex *time) {
-LOG_EXPR("ifft");
 		abort(); // not implemented
 		innerFFT.ifft(innerSize, time, freq);
 	}
 private:
 	size_t innerSize, outerSize;
-	std::vector<Complex> tmpTime;
+	std::vector<Complex> tmpTime, tmpFreq;
+	std::vector<Complex> outerTwiddles;
 	SimpleFFT<Sample> innerFFT;
+	
+	void fftStep(size_t s, const Complex *time, Complex *freq) {
+		if (s == 0) {
+			for (size_t i = 0; i < innerSize; ++i) {
+				tmpTime[i] = time[i*outerSize];
+			}
+			innerFFT.fft(innerSize, tmpTime.data(), freq);
+			for (size_t s = 1; s < outerSize; ++s) {
+				for (size_t i = 0; i < innerSize; ++i) {
+					freq[i + s*innerSize] = freq[i];
+				}
+			}
+		} else {
+			for (size_t i = 0; i < innerSize; ++i) {
+				tmpTime[i] = time[s + i*outerSize];
+			}
+			innerFFT.fft(innerSize, tmpTime.data(), tmpFreq.data());
+
+			auto *twiddles = outerTwiddles.data() + s*innerSize;
+			for (size_t i = 0; i < innerSize; ++i) {
+				Complex v = tmpFreq[i]*twiddles[i];
+				tmpFreq[i] = v;
+				freq[i] += v;
+			}
+
+			for (size_t f = 1; f < outerSize; ++f) {
+				Sample dftPhase = Sample(-2*M_PI*f/outerSize*s);
+				Complex dftTwist = std::polar(Sample(1), dftPhase);
+
+				for (size_t i = 0; i < innerSize; ++i) {
+					freq[i + f*innerSize] += tmpFreq[i]*dftTwist;
+				}
+			}
+		}
+	}
 };
 
 }} // namespace
