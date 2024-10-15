@@ -173,6 +173,7 @@ struct SignalsmithDSPWrapper {
 	}
 };
 
+#ifdef INCLUDE_KISS
 #define KISSFFT_DATATYPE float
 #include "others/kissfft/kiss_fft.h"
 struct KissFloatWrapper {
@@ -195,6 +196,7 @@ struct KissFloatWrapper {
 		return data.output[0].real();
 	}
 };
+#endif
 
 #include <Accelerate/Accelerate.h>
 struct AccelerateFloatWrapper {
@@ -280,7 +282,9 @@ int main() {
 	Runner<SignalsmithDSPWrapper<float>> dspFloat("DSP library (float)", plot.line(), legend);
 	Runner<AccelerateDoubleWrapper> accelerateDouble("Accelerate (double)", plot.line(), legend);
 	Runner<AccelerateFloatWrapper> accelerateFloat("Accelerate (float)", plot.line(), legend);
+#ifdef INCLUDE_KISS
 	Runner<KissFloatWrapper> kissFloat("KISS (float)", plot.line(), legend);
+#endif
 
 	int maxSize = 65536*8;
 	bool first = true;
@@ -299,7 +303,9 @@ int main() {
 			dspDouble.run(x, dataDouble);
 			dspFloat.run(x, dataFloat);
 		}
+#ifdef INCLUDE_KISS
 		kissFloat.run(x, dataFloat);
+#endif
 		splitDouble.run(x, dataDouble);
 		splitFloat.run(x, dataFloat);
 

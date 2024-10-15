@@ -38,6 +38,12 @@ struct SplitFFT {
 				outerTwiddles[i + s*innerSize] = std::polar(Sample(1), twiddlePhase);
 			}
 		}
+
+		dftTwists.resize(outerSize);
+		for (size_t s = 0; s < outerSize; ++s) {
+			Sample dftPhase = Sample(-2*M_PI*s/outerSize);
+			dftTwists[s] = std::polar(Sample(1), dftPhase);
+		}
 	}
 	
 	size_t size() const {
@@ -61,7 +67,10 @@ private:
 	size_t innerSize, outerSize;
 	std::vector<Complex> tmpTime, tmpFreq;
 	std::vector<Complex> outerTwiddles;
-	SimpleFFT<Sample> innerFFT;
+	std::vector<Complex> dftTwists;
+
+	using InnerFFT = SimpleFFT<Sample>;
+	InnerFFT innerFFT;
 	
 	void fftStep(size_t s, const Complex *time, Complex *freq) {
 		if (s == 0) {
@@ -88,9 +97,7 @@ private:
 			}
 
 			for (size_t f = 1; f < outerSize; ++f) {
-				Sample dftPhase = Sample(-2*M_PI*f/outerSize*s);
-				Complex dftTwist = std::polar(Sample(1), dftPhase);
-
+				Complex dftTwist = dftTwists[(f*s)%outerSize];
 				for (size_t i = 0; i < innerSize; ++i) {
 					freq[i + f*innerSize] += tmpFreq[i]*dftTwist;
 				}
