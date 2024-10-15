@@ -57,8 +57,8 @@ private:
 
 template<class FftWrapper>
 struct Runner {
-	static constexpr double testSeconds = 0.5;
-	static constexpr double testChunk = 0.1;
+	static constexpr double testSeconds = 0.05;//0.5;
+	static constexpr double testChunk = 0.01;//0.1;
 
 	const char *name;
 	signalsmith::plot::Line2D &line;
@@ -284,27 +284,39 @@ int main() {
 
 	int maxSize = 65536*8;
 	bool first = true;
-	for (int n = 1; n <= maxSize; n *= 2) {
+	auto runSize = [&](int n, int pow3=0, int pow5=0, int pow7=0){
 		double x = std::log2(n);
 		RunData<double> dataDouble(n, maxSize, n);
 		RunData<float> dataFloat(n, maxSize, n);
-		
-		simpleDouble.run(x, dataDouble);
-		simpleFloat.run(x, dataFloat);
+
+		if (pow3 + pow5 + pow7 == 0) {
+			simpleDouble.run(x, dataDouble);
+			simpleFloat.run(x, dataFloat);
+			accelerateDouble.run(x, dataDouble);
+			accelerateFloat.run(x, dataFloat);
+		}
+		if (pow5 + pow7 == 0) {
+			dspDouble.run(x, dataDouble);
+			dspFloat.run(x, dataFloat);
+		}
+		kissFloat.run(x, dataFloat);
 		splitDouble.run(x, dataDouble);
 		splitFloat.run(x, dataFloat);
-		dspDouble.run(x, dataDouble);
-		dspFloat.run(x, dataFloat);
-		accelerateDouble.run(x, dataDouble);
-		accelerateFloat.run(x, dataFloat);
-		kissFloat.run(x, dataFloat);
 
 		if (first) {
 			first = false;
 			plot.x.major(x, std::to_string(n));
-		} else {
+		} else if (pow3 + pow5 + pow7 == 0) {
 			plot.x.tick(x, std::to_string(n));
 		}
+	};
+	for (int n = 1; n <= maxSize; n *= 2) {
+		if (n/16) runSize(n*9/16, 2);
+		if (n/8) runSize(n*5/8, 0, 1);
+		if (n/4) runSize(n*3/4, 1);
+		if (n/8) runSize(n*7/8, 1, 1);
+		if (n/16) runSize(n*15/16, 1, 1);
+		runSize(n);
 	}
 	plot.y.major(0); // auto-scaled range includes 0
 	plot.y.blankLabels().label("speed"); // values don't matter, only the comparison
