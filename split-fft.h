@@ -44,13 +44,18 @@ struct SplitFFT {
 			Sample dftPhase = Sample(-2*M_PI*s/outerSize);
 			dftTwists[s] = std::polar(Sample(1), dftPhase);
 		}
+
+		outerPasses = 0;
+		if (outerSize == 8) {
+			outerPasses = 3;
+		}
 	}
 	
 	size_t size() const {
 		return innerSize*outerSize;
 	}
 	size_t steps() const {
-		return outerSize + 1;
+		return outerSize + outerPasses;
 	}
 	
 	void fft(const Complex *time, Complex *freq) {
@@ -64,7 +69,7 @@ struct SplitFFT {
 		innerFFT.ifft(innerSize, time, freq);
 	}
 private:
-	size_t innerSize, outerSize;
+	size_t innerSize, outerSize, outerPasses;
 	std::vector<Complex> tmpTime, tmpFreq;
 	std::vector<Complex> outerTwiddles;
 	std::vector<Complex> dftTwists;
@@ -83,23 +88,44 @@ private:
 					freq[i + s*innerSize] = freq[i];
 				}
 			}
-		} else {
+		} else if (s < outerSize) {
 			for (size_t i = 0; i < innerSize; ++i) {
 				tmpTime[i] = time[s + i*outerSize];
 			}
 			innerFFT.fft(innerSize, tmpTime.data(), tmpFreq.data());
-
+			
 			auto *twiddles = outerTwiddles.data() + s*innerSize;
-			for (size_t i = 0; i < innerSize; ++i) {
-				Complex v = tmpFreq[i]*twiddles[i];
-				tmpFreq[i] = v;
-				freq[i] += v;
-			}
-
-			for (size_t f = 1; f < outerSize; ++f) {
-				Complex dftTwist = dftTwists[(f*s)%outerSize];
+			if (outerPasses == 0) {
+				// We have to do the final DFT right here
 				for (size_t i = 0; i < innerSize; ++i) {
-					freq[i + f*innerSize] += tmpFreq[i]*dftTwist;
+					Complex v = tmpFreq[i]*twiddles[i];
+					tmpFreq[i] = v;
+					freq[i] += v;
+				}
+
+				for (size_t f = 1; f < outerSize; ++f) {
+					Complex dftTwist = dftTwists[(f*s)%outerSize];
+					for (size_t i = 0; i < innerSize; ++i) {
+						freq[i + f*innerSize] += tmpFreq[i]*dftTwist;
+					}
+				}
+			} else {
+				// We'll do the final DFT in-place, as extra passes
+				for (size_t i = 0; i < innerSize; ++i) {
+					freq[i] = tmpFreq[i]*twiddles[i];
+				}
+			}
+		} else {
+			size_t outerPass = s - outerSize;
+			size_t divisor = 1<<(outerPasses - outerPass); // 2 on the final pass, 4 on the one before etc.
+			size_t subSize = innerSize*outerSize/divisor;
+			for (size_t d = 0; d < divisor; ++d) {
+				auto *f0 = freq + subSize*2*d;
+				auto *f1 = freq + subSize*2*(d + 1);
+				for (size_t i = 0; i < subSize; ++i) {
+					Complex a = f0[i], b = f1[i];
+					f0[i] = a + b;
+					f1[i] = a - b;
 				}
 			}
 		}
