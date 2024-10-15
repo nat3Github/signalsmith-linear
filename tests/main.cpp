@@ -269,6 +269,16 @@ struct AccelerateDoubleWrapper {
 // ---------- main code
 
 int main() {
+	signalsmith::plot::Plot2D fastSizePlot(200, 200);
+	auto &fastSizeLine = fastSizePlot.line();
+	for (int n = 1; n < 65536; ++n) {
+		int fastN = signalsmith::fft2::SplitFFT<double>::fastSizeAbove(n);
+		fastSizeLine.add(std::log2(n), std::log2(fastN));
+	}
+	fastSizePlot.line().add(0, 0).add(16, 16);
+	fastSizePlot.line().add(0, std::log2(1.25)).add(16 - std::log2(1.25), 16);
+	fastSizePlot.write("fast-sizes.svg");
+
 	signalsmith::plot::Figure figure;
 	auto &plot = figure.plot(800, 250);
 	plot.x.label("FFT size");
@@ -306,8 +316,10 @@ int main() {
 #ifdef INCLUDE_KISS
 		kissFloat.run(x, dataFloat);
 #endif
-		splitDouble.run(x, dataDouble);
-		splitFloat.run(x, dataFloat);
+		if (signalsmith::fft2::SplitFFT<double>::fastSizeAbove(n) == size_t(n)) {
+			splitDouble.run(x, dataDouble);
+			splitFloat.run(x, dataFloat);
+		}
 
 		if (first) {
 			first = false;
@@ -321,7 +333,7 @@ int main() {
 		if (n/8) runSize(n*5/8, 0, 1);
 		if (n/4) runSize(n*3/4, 1);
 		if (n/8) runSize(n*7/8, 1, 1);
-		if (n/16) runSize(n*15/16, 1, 1);
+		//if (n/16) runSize(n*15/16, 1, 1);
 		runSize(n);
 	}
 	plot.y.major(0); // auto-scaled range includes 0

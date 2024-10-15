@@ -8,12 +8,23 @@
 
 namespace signalsmith { namespace fft2 {
 
+template<typename Sample>
+struct SplitFFTInner : public SimpleFFT<Sample> {};
+
 /// An FFT which can be computed in chunks
 template<typename Sample>
 struct SplitFFT {
 	using Complex = std::complex<Sample>;
 	static constexpr size_t maxSplit = 4;
-	static constexpr size_t minInnerSize = 8;
+	static constexpr size_t minInnerSize = 32;
+	
+	static size_t fastSizeAbove(size_t size) {
+		size_t pow2 = 1;
+		while (pow2 < 16 && pow2 < size) pow2 *= 2;
+		while (pow2*8 < size) pow2 *= 2;
+		size_t multiple = (size + pow2 - 1)/pow2; // will be 1-8
+		return multiple*pow2;
+	}
 	
 	SplitFFT(size_t size=0) {
 		resize(size);
@@ -75,8 +86,7 @@ private:
 	std::vector<Complex> outerTwiddles;
 	std::vector<Complex> dftTwists;
 
-	using InnerFFT = SimpleFFT<Sample>;
-	InnerFFT innerFFT;
+	SplitFFTInner<Sample> innerFFT;
 	
 	void fftStep(size_t s, const Complex *time, Complex *freq) {
 		if (s == 0) {
