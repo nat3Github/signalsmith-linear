@@ -30,7 +30,27 @@ struct RunData {
 			v = {dist(randomEngine), dist(randomEngine)};
 		}
 	}
-
+	
+	double errorCheck(int count=-1) {
+		double error2 = 0;
+		
+		if (count < 0) count = size;
+		std::uniform_int_distribution<int> dist{0, size - 1};
+		
+		for (int r = 0; r < count; ++r) {
+			int f = (count == size) ? r : dist(randomEngine);
+			Complex actual = output[f];
+			Complex sum = 0;
+			for (int i = 0; i < size; ++i) {
+				Sample phase = Sample(-2*M_PI*f*i/size);
+				sum += input[i]*std::polar(Sample(1), phase);
+			}
+			Complex error = sum - actual;
+			error2 += std::norm(error);
+		}
+		return std::sqrt(error2/size);
+	}
+	
 private:
 	std::default_random_engine randomEngine;
 };
@@ -72,11 +92,18 @@ struct Runner {
 			}
 		}
 		double rps = rounds/seconds;
-		double ref = data.size*(std::log2(data.size) + 1);
+		double ref = 1e-8*data.size*(std::log2(data.size) + 1);
 		double scaledRps = rps*ref;
 		line.add(x, scaledRps);
 		
-		std::cout << name << "\t@ " << data.size << ": " << scaledRps << " (" << dummySum << ")\n";
+		std::cout << data.size << "\t" << name;
+		for (size_t c = std::strlen(name); c < 20; ++c) std::cout << " ";
+		std::cout << "\tspeed: " << scaledRps;
+		if (data.size <= 256) {
+			std::cout << "\terror: " << data.errorCheck() << "\n";
+		} else {
+			std::cout << "\tdummy: " << dummySum << "\n";
+		}
 	}
 };
 
