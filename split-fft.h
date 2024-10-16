@@ -83,23 +83,35 @@ struct SplitFFT {
 			dftTwists[s] = std::polar(Sample(1), dftPhase);
 		}
 
-		finalPass = FinalPass::none;
-		if (outerSize == 2) finalPass = FinalPass::order2;
-		if (outerSize == 3) finalPass = FinalPass::order3;
-		if (outerSize == 4) finalPass = FinalPass::order4;
-		if (outerSize == 5) finalPass = FinalPass::order5;
+		StepType finalStep = (StepType)0; // invalid final step
+		if (outerSize == 2) finalStep = StepType::finalOrder2;
+		if (outerSize == 3) finalStep = StepType::finalOrder3;
+		if (outerSize == 4) finalStep = StepType::finalOrder4;
+		if (outerSize == 5) finalStep = StepType::finalOrder5;
+		
+		if (size <= 1) {
+			stepTypes.clear();
+			if (size > 0) stepTypes.push_back(StepType::firstWithFinal); // This should just copy, but it's a rare enough case to not need an enum value
+		} else if (finalStep == (StepType)0) {
+			stepTypes.assign(outerSize, StepType::middleWithoutFinal);
+			stepTypes[0] = StepType::firstWithoutFinal;
+		} else {
+			stepTypes.assign(outerSize, StepType::middleWithFinal);
+			stepTypes[0] = StepType::firstWithFinal;
+			stepTypes.push_back(finalStep);
+		}
 	}
 	
 	size_t size() const {
 		return innerSize*outerSize;
 	}
 	size_t steps() const {
-		return outerSize + (finalPass == FinalPass::none ? 0 : 1);
+		return stepTypes.size();
 	}
 	
 	void fft(const Complex *time, Complex *freq) {
-		for (size_t s = 0; s < steps(); ++s) {
-			fftStep(s, time, freq);
+		for (size_t s = 0; s < stepTypes.size(); ++s) {
+			fftStep(stepTypes[s], s, time, freq);
 		}
 	}
 
@@ -115,30 +127,39 @@ private:
 
 	SplitFFTInner<Sample> innerFFT;
 	
-	enum class FinalPass{none, order2, order3, order4, order5};
-	FinalPass finalPass;
+	enum class StepType{firstWithFinal, firstWithoutFinal, middleWithFinal, middleWithoutFinal, finalOrder2, finalOrder3, finalOrder4, finalOrder5};
+	std::vector<StepType> stepTypes;
 	
-	void fftStep(size_t s, const Complex *time, Complex *freq) {
-		if (s == 0) {
-			innerFFT.fftStride(innerSize, outerSize, time, freq);
-			if (finalPass == FinalPass::none) {
+	void fftStep(StepType stepType, size_t s, const Complex *time, Complex *freq) {
+		switch (stepType) {
+			case (StepType::firstWithFinal): {
+				innerFFT.fftStride(innerSize, outerSize, time, freq);
+				break;
+			}
+			case (StepType::firstWithoutFinal): {
+				innerFFT.fftStride(innerSize, outerSize, time, freq);
 				// We're doing the DFT as part of these passes, so duplicate this one
 				for (size_t s = 1; s < outerSize; ++s) {
 					for (size_t i = 0; i < innerSize; ++i) {
 						freq[i + s*innerSize] = freq[i];
 					}
 				}
+				break;
 			}
-		} else if (s < outerSize) {
-			innerFFT.fftStride(innerSize, outerSize, time + s, tmpFreq.data());
-			
-			auto *twiddles = outerTwiddles.data() + s*innerSize;
-			if (finalPass != FinalPass::none) {
+			case (StepType::middleWithFinal): {
+				innerFFT.fftStride(innerSize, outerSize, time + s, tmpFreq.data());
+				
+				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We'll do the final DFT in-place, as extra passes
 				for (size_t i = 0; i < innerSize; ++i) {
 					freq[i + s*innerSize] = tmpFreq[i]*twiddles[i];
 				}
-			} else {
+				break;
+			}
+			case (StepType::middleWithoutFinal): {
+				innerFFT.fftStride(innerSize, outerSize, time + s, tmpFreq.data());
+				
+				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We have to do the final DFT right here
 				for (size_t i = 0; i < innerSize; ++i) {
 					Complex v = tmpFreq[i]*twiddles[i];
@@ -152,24 +173,20 @@ private:
 						freq[i + f*innerSize] += tmpFreq[i]*dftTwist;
 					}
 				}
-			}
-		} else {
-			switch (finalPass) {
-			case FinalPass::none:
 				break;
-			case FinalPass::order2:
+			}
+			case StepType::finalOrder2:
 				finalPass2(freq);
 				break;
-			case FinalPass::order3:
+			case StepType::finalOrder3:
 				finalPass3(freq);
 				break;
-			case FinalPass::order4:
+			case StepType::finalOrder4:
 				finalPass4(freq);
 				break;
-			case FinalPass::order5:
+			case StepType::finalOrder5:
 				finalPass5(freq);
 				break;
-			}
 		}
 	}
 	
