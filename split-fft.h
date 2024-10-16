@@ -13,29 +13,38 @@
 namespace signalsmith { namespace fft2 {
 
 template<typename Sample>
-struct SplitFFTInner {
+struct Pow2FFT {
 	using Complex = std::complex<Sample>;
-	using Super = SimpleFFT<Sample>;
+	
+	Pow2FFT(size_t size=0) {
+		resize(size);
+	}
 	
 	void resize(size_t size) {
-		fft.resize(size);
+		_size = size;
+		innerFFT.resize(size);
 		tmpTime.resize(size);
 	}
 	
-	void fftStride(size_t size, size_t stride, const Complex *time, Complex *freq) {
+	void fft(const Complex *time, Complex *freq) {
+		innerFFT.fft(_size, time, freq);
+	}
+	
+	void fftStrideTime(size_t stride, const Complex *time, Complex *freq) {
 		const Complex *input = time;
 		if (stride != 1) {
 			input = tmpTime.data();
-			for (size_t i = 0; i < size; ++i) {
+			for (size_t i = 0; i < _size; ++i) {
 				tmpTime[i] = time[i*stride];
 			}
 		}
-		fft.fft(size, input, freq);
+		innerFFT.fft(_size, input, freq);
 	}
 
 private:
+	size_t _size;
 	std::vector<Complex> tmpTime;
-	SimpleFFT<Sample> fft;
+	SimpleFFT<Sample> innerFFT;
 };
 
 /// An FFT which can be computed in chunks
@@ -125,7 +134,7 @@ private:
 	std::vector<Complex> outerTwiddles;
 	std::vector<Complex> dftTwists;
 
-	SplitFFTInner<Sample> innerFFT;
+	Pow2FFT<Sample> innerFFT;
 	
 	enum class StepType{firstWithFinal, firstWithoutFinal, middleWithFinal, middleWithoutFinal, finalOrder2, finalOrder3, finalOrder4, finalOrder5};
 	std::vector<StepType> stepTypes;
@@ -133,11 +142,11 @@ private:
 	void fftStep(StepType stepType, size_t s, const Complex *time, Complex *freq) {
 		switch (stepType) {
 			case (StepType::firstWithFinal): {
-				innerFFT.fftStride(innerSize, outerSize, time, freq);
+				innerFFT.fftStrideTime(outerSize, time, freq);
 				break;
 			}
 			case (StepType::firstWithoutFinal): {
-				innerFFT.fftStride(innerSize, outerSize, time, freq);
+				innerFFT.fftStrideTime(outerSize, time, freq);
 				// We're doing the DFT as part of these passes, so duplicate this one
 				for (size_t s = 1; s < outerSize; ++s) {
 					for (size_t i = 0; i < innerSize; ++i) {
@@ -147,7 +156,7 @@ private:
 				break;
 			}
 			case (StepType::middleWithFinal): {
-				innerFFT.fftStride(innerSize, outerSize, time + s, tmpFreq.data());
+				innerFFT.fftStrideTime(outerSize, time + s, tmpFreq.data());
 				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We'll do the final DFT in-place, as extra passes
@@ -157,7 +166,7 @@ private:
 				break;
 			}
 			case (StepType::middleWithoutFinal): {
-				innerFFT.fftStride(innerSize, outerSize, time + s, tmpFreq.data());
+				innerFFT.fftStrideTime(outerSize, time + s, tmpFreq.data());
 				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We have to do the final DFT right here
@@ -244,21 +253,18 @@ private:
 // Accelerate
 #ifdef SIGNALSMITH_USE_ACCELERATE
 template<>
-struct SplitFFTInner<float> {
+struct Pow2FFT<float> {
 	using Complex = std::complex<float>;
 	
-	bool hasSetup = false;
-	FFTSetup fftSetup;
-	int log2 = 0;
-	
-	std::vector<float> splitReal, splitImag;
-
-	SplitFFTInner() {}
-	~SplitFFTInner() {
+	Pow2FFT(size_t size=0) {
+		if (size > 0) resize(size);
+	}
+	~Pow2FFT() {
 		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
 	}
 	
 	void resize(int size) {
+		_size = size;
 		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
 		log2 = std::round(std::log2(size));
 		fftSetup =  vDSP_create_fftsetup(log2, FFT_RADIX2);
@@ -268,29 +274,39 @@ struct SplitFFTInner<float> {
 		splitImag.resize(size);
 	}
 	
-	void fftStride(size_t size, size_t stride, const Complex *input, Complex *output) {
+	void fft(const Complex *input, Complex *output) {
 		DSPSplitComplex splitComplex{splitReal.data(), splitImag.data()};
-		vDSP_ctoz((DSPComplex *)input, 2*stride, &splitComplex, 1, size);
+		vDSP_ctoz((DSPComplex *)input, 2, &splitComplex, 1, _size);
 		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
-		vDSP_ztoc(&splitComplex, 1, (DSPComplex *)output, 2, size);
+		vDSP_ztoc(&splitComplex, 1, (DSPComplex *)output, 2, _size);
 	}
+	
+	void fftStrideTime(size_t stride, const Complex *input, Complex *output) {
+		DSPSplitComplex splitComplex{splitReal.data(), splitImag.data()};
+		vDSP_ctoz((DSPComplex *)input, 2*stride, &splitComplex, 1, _size);
+		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
+		vDSP_ztoc(&splitComplex, 1, (DSPComplex *)output, 2, _size);
+	}
+private:
+	size_t _size = 0;
+	bool hasSetup = false;
+	FFTSetup fftSetup;
+	int log2 = 0;
+	std::vector<float> splitReal, splitImag;
 };
 template<>
-struct SplitFFTInner<double> {
+struct Pow2FFT<double> {
 	using Complex = std::complex<double>;
-	
-	bool hasSetup = false;
-	FFTSetupD fftSetup;
-	int log2 = 0;
-	
-	std::vector<double> splitReal, splitImag;
 
-	SplitFFTInner() {}
-	~SplitFFTInner() {
+	Pow2FFT(size_t size=0) {
+		if (size > 0) resize(size);
+	}
+	~Pow2FFT() {
 		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
 	}
 	
 	void resize(int size) {
+		_size = size;
 		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
 		log2 = std::round(std::log2(size));
 		fftSetup =  vDSP_create_fftsetupD(log2, FFT_RADIX2);
@@ -300,12 +316,25 @@ struct SplitFFTInner<double> {
 		splitImag.resize(size);
 	}
 	
-	void fftStride(size_t size, size_t stride, const Complex *input, Complex *output) {
+	void fft(const Complex *input, Complex *output) {
 		DSPDoubleSplitComplex splitComplex{splitReal.data(), splitImag.data()};
-		vDSP_ctozD((DSPDoubleComplex *)input, 2*stride, &splitComplex, 1, size);
+		vDSP_ctozD((DSPDoubleComplex *)input, 2, &splitComplex, 1, _size);
 		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
-		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex *)output, 2, size);
+		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex *)output, 2, _size);
 	}
+
+	void fftStrideTime(size_t stride, const Complex *input, Complex *output) {
+		DSPDoubleSplitComplex splitComplex{splitReal.data(), splitImag.data()};
+		vDSP_ctozD((DSPDoubleComplex *)input, 2*stride, &splitComplex, 1, _size);
+		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
+		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex *)output, 2, _size);
+	}
+private:
+	size_t _size = 0;
+	bool hasSetup = false;
+	FFTSetupD fftSetup;
+	int log2 = 0;
+	std::vector<double> splitReal, splitImag;
 };
 #endif
 
