@@ -50,6 +50,7 @@ struct SplitFFT {
 		while (pow2 < 16 && pow2 < size) pow2 *= 2;
 		while (pow2*8 < size) pow2 *= 2;
 		size_t multiple = (size + pow2 - 1)/pow2; // will be 1-8
+		if (multiple == 7) ++multiple;
 		return multiple*pow2;
 	}
 	
@@ -87,7 +88,6 @@ struct SplitFFT {
 		if (outerSize == 3) finalPass = FinalPass::order3;
 		if (outerSize == 4) finalPass = FinalPass::order4;
 		if (outerSize == 5) finalPass = FinalPass::order5;
-		if (outerSize == 7) finalPass = FinalPass::order7;
 	}
 	
 	size_t size() const {
@@ -115,7 +115,7 @@ private:
 
 	SplitFFTInner<Sample> innerFFT;
 	
-	enum class FinalPass{none, order2, order3, order4, order5, order7};
+	enum class FinalPass{none, order2, order3, order4, order5};
 	FinalPass finalPass;
 	
 	void fftStep(size_t s, const Complex *time, Complex *freq) {
@@ -169,9 +169,6 @@ private:
 			case FinalPass::order5:
 				finalPass5(freq);
 				break;
-			case FinalPass::order7:
-				finalPass7(freq);
-				break;
 			}
 		}
 	}
@@ -223,25 +220,6 @@ private:
 			f2[i] = a + b*tw2 + c*std::conj(tw1) + d*tw1 + e*std::conj(tw2);
 			f3[i] = a + b*std::conj(tw2) + c*tw1 + d*std::conj(tw1) + e*tw2;
 			f4[i] = a + b*std::conj(tw1) + c*std::conj(tw2) + d*tw2 + e*tw1;
-		}
-	}
-	void finalPass7(Complex *f0) {
-		auto *f1 = f0 + innerSize;
-		auto *f2 = f0 + innerSize*2;
-		auto *f3 = f0 + innerSize*3;
-		auto *f4 = f0 + innerSize*4;
-		auto *f5 = f0 + innerSize*5;
-		auto *f6 = f0 + innerSize*6;
-		const Complex tw1{0.6234898018587336, -0.7818314824680298}, tw2{-0.22252093395631434, -0.9749279121818236}, tw3{-0.900968867902419, -0.43388373911755823};
-		for (size_t i = 0; i < innerSize; ++i) {
-			Complex a = f0[i], b = f1[i], c = f2[i], d = f3[i], e = f4[i], f = f5[i], g = f6[i];
-			f0[i] = a + b + c + d + e + f + g;
-			f1[i] = a + b*tw1 + c*tw2 + d*tw3 + e*std::conj(tw3) + f*std::conj(tw2) + g*std::conj(tw1);
-			f2[i] = a + b*tw2 + c*std::conj(tw3) + d*std::conj(tw1) + e*tw1 + f*tw3 + g*std::conj(tw2);
-			f3[i] = a + b*tw3 + c*std::conj(tw1) + d*tw2 + e*std::conj(tw2) + f*tw1 + g*std::conj(tw3);
-			f4[i] = a + b*std::conj(tw3) + c*tw1 + d*std::conj(tw2) + e*tw2 + f*std::conj(tw1) + g*tw3;
-			f5[i] = a + b*std::conj(tw2) + c*tw3 + d*tw1 + e*std::conj(tw1) + f*std::conj(tw3) + g*tw2;
-			f6[i] = a + b*std::conj(tw1) + c*std::conj(tw2) + d*std::conj(tw3) + e*tw3 + f*tw2 + g*tw1;
 		}
 	}
 };

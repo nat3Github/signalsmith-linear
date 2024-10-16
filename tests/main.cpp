@@ -333,7 +333,7 @@ int main() {
 		if (n/8) runSize(n*5/8, 0, 1);
 		if (n/4) runSize(n*3/4, 1);
 		if (n/8) runSize(n*7/8, 1, 1);
-		//if (n/16) runSize(n*15/16, 1, 1);
+		if (n/16) runSize(n*15/16, 1, 1);
 		runSize(n);
 	}
 	plot.y.major(0); // auto-scaled range includes 0
