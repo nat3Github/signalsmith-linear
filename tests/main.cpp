@@ -1,3 +1,5 @@
+#include "../fft2.h"
+
 #include "./stopwatch.h"
 #if defined(__has_include) && __has_include("plot/signalsmith.h")
 #	include "plot/signalsmith.h"
@@ -100,7 +102,9 @@ struct Runner {
 		for (size_t c = std::strlen(name); c < 20; ++c) std::cout << " ";
 		std::cout << "\tspeed: " << scaledRps;
 		if (data.size <= 256) {
-			std::cout << "\terror: " << data.errorCheck() << "\n";
+			double error = data.errorCheck();
+			std::cout << "\terror: " << error << "\n";
+			if (error > 0.000001*data.size) abort(); // sanity check
 		} else {
 			std::cout << "\tdummy: " << dummySum << "\n";
 		}
@@ -109,7 +113,6 @@ struct Runner {
 
 // ---------- wrappers
 
-#include "../simple-fft.h"
 template<class Sample>
 struct SimpleWrapper {
 	signalsmith::fft2::SimpleFFT<Sample> fft;
@@ -125,7 +128,6 @@ struct SimpleWrapper {
 	}
 };
 
-#include "../split-fft.h"
 template<class Sample>
 struct SplitWrapper {
 	signalsmith::fft2::SplitFFT<Sample> fft;
@@ -172,31 +174,6 @@ struct SignalsmithDSPWrapper {
 		return data.output[0].real();
 	}
 };
-
-#ifdef INCLUDE_KISS
-#define KISSFFT_DATATYPE float
-#include "others/kissfft/kiss_fft.h"
-struct KissFloatWrapper {
-	kiss_fft_cfg cfg;
-	bool hasConfig = false;
-	
-	~KissFloatWrapper() {
-		if (hasConfig) kiss_fft_free(cfg);
-	}
-
-	void prepare(int size, int) {
-		if (hasConfig) kiss_fft_free(cfg);
-		cfg = kiss_fft_alloc(size, false, 0, 0);
-		hasConfig = true;
-	}
-	
-	template<class Data>
-	double run(Data &data) {
-		kiss_fft(cfg, (kiss_fft_cpx *)data.input.data(), (kiss_fft_cpx *)data.output.data());
-		return data.output[0].real();
-	}
-};
-#endif
 
 #include <Accelerate/Accelerate.h>
 struct AccelerateFloatWrapper {
@@ -292,9 +269,6 @@ int main() {
 	Runner<SignalsmithDSPWrapper<float>> dspFloat("DSP library (float)", plot.line(), legend);
 	Runner<AccelerateDoubleWrapper> accelerateDouble("Accelerate (double)", plot.line(), legend);
 	Runner<AccelerateFloatWrapper> accelerateFloat("Accelerate (float)", plot.line(), legend);
-#ifdef INCLUDE_KISS
-	Runner<KissFloatWrapper> kissFloat("KISS (float)", plot.line(), legend);
-#endif
 
 	int maxSize = 65536*8;
 	bool first = true;
@@ -313,9 +287,6 @@ int main() {
 			dspDouble.run(x, dataDouble);
 			dspFloat.run(x, dataFloat);
 		}
-#ifdef INCLUDE_KISS
-		kissFloat.run(x, dataFloat);
-#endif
 		if (signalsmith::fft2::SplitFFT<double>::fastSizeAbove(n) == size_t(n)) {
 			splitDouble.run(x, dataDouble);
 			splitFloat.run(x, dataFloat);
