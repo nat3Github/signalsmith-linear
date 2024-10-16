@@ -23,7 +23,7 @@ struct SplitFFTInner {
 	}
 	
 	void fftStride(size_t size, size_t stride, const Complex *time, Complex *freq) {
-		Complex *input = time;
+		const Complex *input = time;
 		if (stride != 1) {
 			input = tmpTime.data();
 			for (size_t i = 0; i < size; ++i) {
