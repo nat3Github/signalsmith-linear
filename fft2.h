@@ -415,6 +415,8 @@ private:
 	std::vector<double> splitReal, splitImag;
 };
 }} // namespace
+#elif defined(SIGNALSMITH_USE_IPP)
+#include "./platform/fft2-ipp.h"
 #endif
 
 #endif // include guard

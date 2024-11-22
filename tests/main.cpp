@@ -131,7 +131,8 @@ struct SimpleWrapper {
 
 template<class Sample>
 struct SplitWrapper {
-	signalsmith::fft2::SplitFFT<Sample> fft;
+	signalsmith::fft2::Pow2FFT<Sample> fft;
+//  signalsmith::fft2::SplitFFT<Sample> fft;
 
 	void prepare(int size, int) {
 		fft.resize(size);
@@ -284,6 +285,8 @@ int main() {
 		if (pow3 + pow5 + pow7 == 0) {
 			simpleDouble.run(x, dataDouble);
 			simpleFloat.run(x, dataFloat);
+                        splitDouble.run(x, dataDouble);
+                        splitFloat.run(x, dataFloat);
 #ifdef SIGNALSMITH_USE_ACCELERATE
 			accelerateDouble.run(x, dataDouble);
 			accelerateFloat.run(x, dataFloat);
@@ -294,8 +297,8 @@ int main() {
 			dspFloat.run(x, dataFloat);
 		}
 		if (signalsmith::fft2::SplitFFT<double>::fastSizeAbove(n) == size_t(n)) {
-			splitDouble.run(x, dataDouble);
-			splitFloat.run(x, dataFloat);
+//			splitDouble.run(x, dataDouble);
+//			splitFloat.run(x, dataFloat);
 		}
 
 		if (first) {
