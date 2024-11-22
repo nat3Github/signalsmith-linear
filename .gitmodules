@@ -1,0 +1,6 @@
+[submodule "modules/plot"]
+	path = modules/plot
+	url = https://github.com/Signalsmith-Audio/plot.git
+[submodule "modules/dsp"]
+	path = modules/dsp
+	url = https://github.com/Signalsmith-Audio/dsp
