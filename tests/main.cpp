@@ -1,11 +1,12 @@
 #include "../fft2.h"
 
 #include "./stopwatch.h"
-#if defined(__has_include) && __has_include("plot/signalsmith.h")
-#	include "plot/signalsmith.h"
-#else
-#	include "plot/plot.h"
-#endif
+#include "plot/plot.h"
+//#if defined(__has_include) && __has_include("plot/signalsmith.h")
+//#	include "plot/signalsmith.h"
+//#else
+//#	include "plot/plot.h"
+//#endif
 
 #include <iostream>
 #include <complex>
@@ -175,6 +176,7 @@ struct SignalsmithDSPWrapper {
 	}
 };
 
+#ifdef SIGNALSMITH_USE_ACCELERATE
 #include <Accelerate/Accelerate.h>
 struct AccelerateFloatWrapper {
 	bool hasSetup = false;
@@ -242,7 +244,7 @@ struct AccelerateDoubleWrapper {
 		return data.output[0].real();
 	}
 };
-
+#endif
 // ---------- main code
 
 int main() {
@@ -267,8 +269,10 @@ int main() {
 	Runner<SplitWrapper<float>> splitFloat("split (float)", plot.line(), legend);
 	Runner<SignalsmithDSPWrapper<double>> dspDouble("DSP library (double)", plot.line(), legend);
 	Runner<SignalsmithDSPWrapper<float>> dspFloat("DSP library (float)", plot.line(), legend);
+#ifdef SIGNALSMITH_USE_ACCELERATE
 	Runner<AccelerateDoubleWrapper> accelerateDouble("Accelerate (double)", plot.line(), legend);
 	Runner<AccelerateFloatWrapper> accelerateFloat("Accelerate (float)", plot.line(), legend);
+#endif
 
 	int maxSize = 65536*8;
 	bool first = true;
@@ -280,8 +284,10 @@ int main() {
 		if (pow3 + pow5 + pow7 == 0) {
 			simpleDouble.run(x, dataDouble);
 			simpleFloat.run(x, dataFloat);
+#ifdef SIGNALSMITH_USE_ACCELERATE
 			accelerateDouble.run(x, dataDouble);
 			accelerateFloat.run(x, dataFloat);
+#endif
 		}
 		if (pow5 + pow7 == 0) {
 			dspDouble.run(x, dataDouble);
