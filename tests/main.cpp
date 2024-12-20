@@ -1,4 +1,8 @@
 
+#ifndef SIGNALSMITH_USE_IPP
+#	error OH NOES
+#endif
+
 #include "../fft2.h"
 
 #include "./stopwatch.h"

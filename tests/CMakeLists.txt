@@ -24,7 +24,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(signalsmith_plot)
 
-add_subdirectory(".." ${CMAKE_CURRENT_BINARY_DIR}/fft2)
+#add_subdirectory(".." ${CMAKE_CURRENT_BINARY_DIR}/fft2)
 
 add_executable(fft2-tests ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
-target_link_libraries(fft2-tests INTERFACE fft2)
+#target_link_libraries(fft2-tests INTERFACE fft2)
+#target_compile_definitions(fft2-tests PUBLIC SIGNALSMITH_USE_IPP)
+
+
+if(WIN32)
+	find_package(IPP)
+	if(IPP_FOUND)
+		message(STATUS "found IPP")
+		target_link_libraries(fft2-tests PUBLIC IPP::ippcore IPP::ipps IPP::ippi)
+		target_compile_definitions(fft2-tests PUBLIC SIGNALSMITH_USE_IPP)
+	endif()
+endif()
