@@ -4,8 +4,8 @@
 
 #ifndef FFT2_FFT2_IPP_H
 #define FFT2_FFT2_IPP_H
-#include <ippcore.h>
-#include <ipps.h>
+#include <ipp/ippcore.h>
+#include <ipp/ipps.h>
 #include <memory>
 #include <iostream>
 #include <cassert>
