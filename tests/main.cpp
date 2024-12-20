@@ -1,7 +1,11 @@
-#include "../fft2.h"
+#ifndef SIGNALSMITH_USE_ACCELERATE
+#	error SIGNALSMITH_USE_ACCELERATE not enabled
+#endif
+
+#include "fft2.h"
 
 #include "./stopwatch.h"
-#include "plot/plot.h"
+#include "./plot.h"
 //#if defined(__has_include) && __has_include("plot/signalsmith.h")
 //#	include "plot/signalsmith.h"
 //#else
@@ -161,7 +165,7 @@ struct SignalsmithFFTWrapper {
 	}
 };
 
-#include "dsp/fft.h"
+#include "./others/dsp/fft.h"
 template<class Sample>
 struct SignalsmithDSPWrapper {
 	signalsmith::fft::FFT<Sample> fft{1};

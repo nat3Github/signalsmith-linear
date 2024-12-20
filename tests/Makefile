@@ -8,5 +8,12 @@ out/main: *.cpp *.h ../*.h
 		-framework Accelerate -DSIGNALSMITH_USE_ACCELERATE \
 		main.cpp -o out/main
 
+cmake:
+	cmake -B build -G Xcode
+	cmake --build build --config Release
+	mkdir -p out
+	cp build/fft2-tests out
+	cd out && ./fft2-tests
+
 clean:
 	rm -rf out
