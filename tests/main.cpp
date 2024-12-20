@@ -1,16 +1,8 @@
-#ifndef SIGNALSMITH_USE_ACCELERATE
-#	error SIGNALSMITH_USE_ACCELERATE not enabled
-#endif
 
-#include "fft2.h"
+#include "../fft2.h"
 
 #include "./stopwatch.h"
-#include "./plot.h"
-//#if defined(__has_include) && __has_include("plot/signalsmith.h")
-//#	include "plot/signalsmith.h"
-//#else
-//#	include "plot/plot.h"
-//#endif
+#include "plot/plot.h"
 
 #include <iostream>
 #include <complex>

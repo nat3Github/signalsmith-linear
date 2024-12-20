@@ -4,6 +4,7 @@ set_target_properties(fft2 PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURR
 if(WIN32)
 	find_package(IPP)
 	if(IPP_FOUND)
+		message(STATUS "found IPP")
 		target_link_libraries(fft2 INTERFACE IPP::ippcore IPP::ipps IPP::ippi)
 		target_compile_definitions(fft2 INTERFACE SIGNALSMITH_USE_IPP)
 	endif()
