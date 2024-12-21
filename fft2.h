@@ -5,6 +5,8 @@
 #include <vector>
 #include <cmath>
 
+#include "./cppblas.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -85,7 +87,7 @@ private:
 	}
 };
 
-/// A power-of-2 only FFT, overridden with `SIGNALSMITH_USE_ACCELERATE`
+/// A power-of-2 only FFT, overridden with platform-specific fast implementations where available
 template<typename Sample>
 struct Pow2FFT {
 	using Complex = std::complex<Sample>;
@@ -108,9 +110,7 @@ struct Pow2FFT {
 		const Complex *input = time;
 		if (stride != 1) {
 			input = tmpTime.data();
-			for (size_t i = 0; i < _size; ++i) {
-				tmpTime[i] = time[i*stride];
-			}
+			blas::copy(_size, time, stride, tmpTime.data(), 1);
 		}
 		innerFFT.fft(_size, input, freq);
 	}
@@ -328,7 +328,7 @@ private:
 
 // Platform-specific
 #ifdef SIGNALSMITH_USE_ACCELERATE
-#	include ".platform/fft2-accelerate.h"
+#	include "./platform/fft2-accelerate.h"
 #elif defined(SIGNALSMITH_USE_IPP)
 #	include "./platform/fft2-ipp.h"
 #endif

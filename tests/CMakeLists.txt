@@ -27,4 +27,4 @@ FetchContent_MakeAvailable(signalsmith_plot)
 add_subdirectory(".." ${CMAKE_CURRENT_BINARY_DIR}/fft2)
 
 add_executable(fft2-tests ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
-target_link_libraries(fft2-tests INTERFACE fft2)
+target_link_libraries(fft2-tests PRIVATE fft2)

@@ -186,75 +186,6 @@ struct SignalsmithDSPWrapper {
 	}
 };
 
-#ifdef SIGNALSMITH_USE_ACCELERATE
-#include <Accelerate/Accelerate.h>
-struct AccelerateFloatWrapper {
-	bool hasSetup = false;
-	FFTSetup fftSetup;
-	int log2 = 0;
-	
-	std::vector<float> splitReal, splitImag;
-
-	AccelerateFloatWrapper() {}
-	~AccelerateFloatWrapper() {
-		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
-	}
-	
-	void prepare(int size, int) {
-		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
-		log2 = std::round(std::log2(size));
-		fftSetup =  vDSP_create_fftsetup(log2, FFT_RADIX2);
-		hasSetup = true;
-		
-		splitReal.resize(size);
-		splitImag.resize(size);
-	}
-	
-	template<class Data>
-	double run(Data &data) {
-		DSPSplitComplex splitComplex{splitReal.data(), splitImag.data()};
-		vDSP_ctoz((DSPComplex *)data.input.data(), 2, &splitComplex, 1, data.size);
-		
-		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
-
-		vDSP_ztoc(&splitComplex, 1, (DSPComplex *)data.output.data(), 2, data.size);
-		return data.output[0].real();
-	}
-};
-struct AccelerateDoubleWrapper {
-	bool hasSetup = false;
-	FFTSetupD fftSetup;
-	int log2 = 0;
-	
-	std::vector<double> splitReal, splitImag;
-
-	AccelerateDoubleWrapper() {}
-	~AccelerateDoubleWrapper() {
-		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
-	}
-	
-	void prepare(int size, int) {
-		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
-		log2 = std::round(std::log2(size));
-		fftSetup =  vDSP_create_fftsetupD(log2, FFT_RADIX2);
-		hasSetup = true;
-		
-		splitReal.resize(size);
-		splitImag.resize(size);
-	}
-	
-	template<class Data>
-	double run(Data &data) {
-		DSPDoubleSplitComplex splitComplex{splitReal.data(), splitImag.data()};
-		vDSP_ctozD((DSPDoubleComplex *)data.input.data(), 2, &splitComplex, 1, data.size);
-		
-		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
-
-		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex *)data.output.data(), 2, data.size);
-		return data.output[0].real();
-	}
-};
-#endif
 // ---------- main code
 
 int main() {
@@ -281,10 +212,6 @@ int main() {
 	Runner<SplitWrapper<float>> splitFloat("Split (float)", plot.line(), legend);
 	Runner<SignalsmithDSPWrapper<double>> dspDouble("DSP library (double)", plot.line(), legend);
 	Runner<SignalsmithDSPWrapper<float>> dspFloat("DSP library (float)", plot.line(), legend);
-#ifdef SIGNALSMITH_USE_ACCELERATE
-	Runner<AccelerateDoubleWrapper> accelerateDouble("Accelerate (double)", plot.line(), legend);
-	Runner<AccelerateFloatWrapper> accelerateFloat("Accelerate (float)", plot.line(), legend);
-#endif
 
 	int maxSize = 65536*8;
 	bool first = true;
@@ -296,12 +223,8 @@ int main() {
 		if (pow3 + pow5 + pow7 == 0) {
 			simpleDouble.run(x, dataDouble);
 			simpleFloat.run(x, dataFloat);
-            pow2Double.run(x, dataDouble);
-            pow2Float.run(x, dataFloat);
-#ifdef SIGNALSMITH_USE_ACCELERATE
-			accelerateDouble.run(x, dataDouble);
-			accelerateFloat.run(x, dataFloat);
-#endif
+			pow2Double.run(x, dataDouble);
+			pow2Float.run(x, dataFloat);
 		}
 		if (pow5 + pow7 == 0) {
 			dspDouble.run(x, dataDouble);
