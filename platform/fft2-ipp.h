@@ -1,14 +1,14 @@
-//
-// Created by Syl on 22/11/2024.
-//
-
 #ifndef FFT2_FFT2_IPP_H
 #define FFT2_FFT2_IPP_H
+
 #include <ipp/ippcore.h>
 #include <ipp/ipps.h>
+
 #include <memory>
-#include <iostream>
+#include <cmath>
+#include <complex>
 #include <cassert>
+
 namespace signalsmith { namespace fft2 {
 
 namespace {
@@ -165,4 +165,4 @@ private:
 
 }}
 
-#endif // FFT2_FFT2_IPP_H
+#endif // include guard

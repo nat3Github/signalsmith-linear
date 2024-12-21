@@ -1,8 +1,4 @@
 
-#ifndef SIGNALSMITH_USE_IPP
-#	error OH NOES
-#endif
-
 #include "../fft2.h"
 
 #include "./stopwatch.h"
@@ -130,16 +126,30 @@ struct SimpleWrapper {
 };
 
 template<class Sample>
-struct SplitWrapper {
+struct Pow2Wrapper {
 	signalsmith::fft2::Pow2FFT<Sample> fft;
-//  signalsmith::fft2::SplitFFT<Sample> fft;
 
 	void prepare(int size, int) {
 		fft.resize(size);
 	}
-	
+
 	template<class Data>
-	double run(Data &data) {
+	double run(Data& data) {
+		fft.fft(data.input.data(), data.output.data());
+		return data.output[0].real();
+	}
+};
+
+template<class Sample>
+struct SplitWrapper {
+	signalsmith::fft2::SplitFFT<Sample> fft;
+
+	void prepare(int size, int) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	double run(Data& data) {
 		fft.fft(data.input.data(), data.output.data());
 		return data.output[0].real();
 	}
@@ -264,10 +274,12 @@ int main() {
 	plot.x.label("FFT size");
 	
 	auto &legend = plot.legend(0, 1);
-	Runner<SimpleWrapper<double>> simpleDouble("simple (double)", plot.line(), legend);
-	Runner<SimpleWrapper<float>> simpleFloat("simple (float)", plot.line(), legend);
-	Runner<SplitWrapper<double>> splitDouble("split (double)", plot.line(), legend);
-	Runner<SplitWrapper<float>> splitFloat("split (float)", plot.line(), legend);
+	Runner<SimpleWrapper<double>> simpleDouble("Simple (double)", plot.line(), legend);
+	Runner<SimpleWrapper<float>> simpleFloat("Simple (float)", plot.line(), legend);
+	Runner<Pow2Wrapper<double>> pow2Double("Pow2 (double)", plot.line(), legend);
+	Runner<Pow2Wrapper<float>> pow2Float("Pow2 (float)", plot.line(), legend);
+	Runner<SplitWrapper<double>> splitDouble("Split (double)", plot.line(), legend);
+	Runner<SplitWrapper<float>> splitFloat("Split (float)", plot.line(), legend);
 	Runner<SignalsmithDSPWrapper<double>> dspDouble("DSP library (double)", plot.line(), legend);
 	Runner<SignalsmithDSPWrapper<float>> dspFloat("DSP library (float)", plot.line(), legend);
 #ifdef SIGNALSMITH_USE_ACCELERATE
@@ -285,8 +297,8 @@ int main() {
 		if (pow3 + pow5 + pow7 == 0) {
 			simpleDouble.run(x, dataDouble);
 			simpleFloat.run(x, dataFloat);
-                        splitDouble.run(x, dataDouble);
-                        splitFloat.run(x, dataFloat);
+            pow2Double.run(x, dataDouble);
+            pow2Float.run(x, dataFloat);
 #ifdef SIGNALSMITH_USE_ACCELERATE
 			accelerateDouble.run(x, dataDouble);
 			accelerateFloat.run(x, dataFloat);
@@ -297,8 +309,8 @@ int main() {
 			dspFloat.run(x, dataFloat);
 		}
 		if (signalsmith::fft2::SplitFFT<double>::fastSizeAbove(n) == size_t(n)) {
-//			splitDouble.run(x, dataDouble);
-//			splitFloat.run(x, dataFloat);
+			splitDouble.run(x, dataDouble);
+			splitFloat.run(x, dataFloat);
 		}
 
 		if (first) {
