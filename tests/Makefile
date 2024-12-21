@@ -12,7 +12,7 @@ cmake:
 	cmake -B build -G Xcode
 	cmake --build build --config Release
 	mkdir -p out
-	cp build/fft2-tests out
+	cp build/Release/fft2-tests out
 	cd out && ./fft2-tests
 
 clean:
