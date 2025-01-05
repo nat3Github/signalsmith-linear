@@ -10,7 +10,7 @@
 
 namespace signalsmith { namespace blas {
 
-template<typename V>
+template<typename V, bool useBlas=true>
 void copy(const int N, const V *x, const int xStride, V *y, const int yStride) {
 	for (int i = 0; i < N; ++i) {
 		y[i*yStride] = x[i*xStride];
@@ -30,19 +30,19 @@ extern "C" {
 
 namespace signalsmith { namespace blas {
 	template<>
-	void copy<float>(const int N, const float *x, const int xStride, float *y, const int yStride) {
+	void copy<float, true>(const int N, const float *x, const int xStride, float *y, const int yStride) {
 		cblas_scopy(BLAS_SIZE(N), x, BLAS_SIZE(xStride), y, BLAS_SIZE(yStride));
 	}
 	template<>
-	void copy<double>(const int N, const double *x, const int xStride, double *y, const int yStride) {
+	void copy<double, true>(const int N, const double *x, const int xStride, double *y, const int yStride) {
 		cblas_dcopy(BLAS_SIZE(N), x, BLAS_SIZE(xStride), y, BLAS_SIZE(yStride));
 	}
 	template<>
-	void copy<std::complex<float>>(const int N, const std::complex<float> *x, const int xStride, std::complex<float> *y, const int yStride) {
+	void copy<std::complex<float>, true>(const int N, const std::complex<float> *x, const int xStride, std::complex<float> *y, const int yStride) {
 		cblas_ccopy(BLAS_SIZE(N), x, BLAS_SIZE(xStride), y, BLAS_SIZE(yStride));
 	}
 	template<>
-	void copy<std::complex<double>>(const int N, const std::complex<double> *x, const int xStride, std::complex<double> *y, const int yStride) {
+	void copy<std::complex<double>, true>(const int N, const std::complex<double> *x, const int xStride, std::complex<double> *y, const int yStride) {
 		cblas_zcopy(BLAS_SIZE(N), x, BLAS_SIZE(xStride), y, BLAS_SIZE(yStride));
 	}
 }}; // namespace
