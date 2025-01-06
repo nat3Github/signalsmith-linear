@@ -24,25 +24,10 @@ struct RunData {
 	Sample *rpA, *rpB, *rpC;
 	Complex *cpA, *cpB, *cpC;
 	
-	RunData(int size, int maxSize, int seed=0) : size(size), maxSize(maxSize), rvA(size), rvB(size), rvC(size), cvA(size), cvB(size), cvC(size), rpA(rvA.data()), rpB(rvB.data()), rpC(rvC.data()), cpA(cvA.data()), cpB(cvB.data()), cpC(cvC.data()), randomEngine(seed) {
-		randomise();
+	RunData(int size, int maxSize=-1, int seed=0) : size(size), maxSize(maxSize >= 0 ? maxSize : size), rvA(size), rvB(size), rvC(size), cvA(size), cvB(size), cvC(size), rpA(rvA.data()), rpB(rvB.data()), rpC(rvC.data()), cpA(cvA.data()), cpB(cvB.data()), cpC(cvC.data()) {
+		randomise(seed);
 	}
-	
-	void randomise() {
-		std::uniform_real_distribution<Sample> dist{-1, 1};
-		rA = dist(randomEngine);
-		rB = dist(randomEngine);
-		rC = dist(randomEngine);
-		for (auto &v : rvA) v = dist(randomEngine);
-		for (auto &v : rvB) v = dist(randomEngine);
-		for (auto &v : rvC) v = dist(randomEngine);
-		cA = {dist(randomEngine), dist(randomEngine)};
-		cB = {dist(randomEngine), dist(randomEngine)};
-		cC = {dist(randomEngine), dist(randomEngine)};
-		for (auto &v : cvA) v = {dist(randomEngine), dist(randomEngine)};
-		for (auto &v : cvB) v = {dist(randomEngine), dist(randomEngine)};
-		for (auto &v : cvC) v = {dist(randomEngine), dist(randomEngine)};
-	}
+	RunData(const RunData &other) : size(other.size), maxSize(other.maxSize), rA(other.rA), rB(other.rB), rC(other.rC), cA(other.cA), cB(other.cB), cC(other.cC), rvA(other.rvA), rvB(other.rvB), rvC(other.rvC), cvA(other.cvA), cvB(other.cvB), cvC(other.cvC), rpA(rvA.data()), rpB(rvB.data()), rpC(rvC.data()), cpA(cvA.data()), cpB(cvB.data()), cpC(cvC.data()) {}
 	
 	double distance(const RunData<Sample> &other) {
 		double error2 = 0;
@@ -57,7 +42,6 @@ struct RunData {
 		}
 		error2 /= size;
 
-
 		error2 += std::norm(rA - other.rA);
 		error2 += std::norm(rB - other.rB);
 		error2 += std::norm(rC - other.rC);
@@ -69,7 +53,23 @@ struct RunData {
 	}
 	
 private:
-	std::default_random_engine randomEngine;
+	void randomise(int seed) {
+		std::default_random_engine randomEngine(seed);
+
+		std::uniform_real_distribution<Sample> dist{-1, 1};
+		rA = dist(randomEngine);
+		rB = dist(randomEngine);
+		rC = dist(randomEngine);
+		for (auto &v : rvA) v = dist(randomEngine);
+		for (auto &v : rvB) v = dist(randomEngine);
+		for (auto &v : rvC) v = dist(randomEngine);
+		cA = {dist(randomEngine), dist(randomEngine)};
+		cB = {dist(randomEngine), dist(randomEngine)};
+		cC = {dist(randomEngine), dist(randomEngine)};
+		for (auto &v : cvA) v = {dist(randomEngine), dist(randomEngine)};
+		for (auto &v : cvB) v = {dist(randomEngine), dist(randomEngine)};
+		for (auto &v : cvC) v = {dist(randomEngine), dist(randomEngine)};
+	}
 };
 
 double nToX(int n) {
@@ -78,8 +78,8 @@ double nToX(int n) {
 
 template<class Wrapper>
 struct Runner {
-	static constexpr double testSeconds = 0.05;//0.5;
-	static constexpr double testChunk = 0.01;//0.1;
+	double testSeconds = 0.05;
+	double testChunk = 0.01;
 
 	std::string name;
 	signalsmith::plot::Line2D &line;
@@ -92,13 +92,13 @@ struct Runner {
 	Runner(Runner &&other) : name(other.name), line(other.line), wrapper(other.wrapper) {}
 
 	template<class Data>
-	void run(const Data &data, double refTime=1, const Data *refData=nullptr) {
+	double run(const Data &data, double refTime=1, const Data *refData=nullptr) {
 		Data copy = data;
 		run(copy, refTime, refData);
 	}
 
 	template<class Data>
-	void run(Data &data, double refTime=1, const Data *refData=nullptr) {
+	double run(Data &data, double refTime=1, const Data *refData=nullptr) {
 		wrapper.prepare(data.size, data.maxSize);
 		size_t rounds = 0, roundStep = 1;
 
@@ -130,7 +130,7 @@ struct Runner {
 		double scaledRps = rps*refTime;
 		line.add(nToX(data.size), scaledRps);
 
-		std::cout << data.size << "\t" << name;
+		std::cout << "\t" << data.size << "\t" << name;
 		for (size_t c = name.size(); c < 23; ++c) std::cout << " ";
 		std::cout << "\tspeed: " << scaledRps;
 		
@@ -144,36 +144,55 @@ struct Runner {
 			}
 			std::cout << "\n";
 		}
+		
+		return scaledRps;
 	}
 };
 
 struct RunPlot {
+	using Plot = signalsmith::plot::Plot2D;
+
 	std::string name;
-	signalsmith::plot::Figure figure;
-	signalsmith::plot::Plot2D &plot;
+	double testSeconds;
+	std::unique_ptr<Plot> plotPtr = nullptr;
+	Plot &plot;
 	signalsmith::plot::Legend &legend;
 	
-	RunPlot(const std::string &name) : name(name), plot(figure.plot(800, 250)), legend(plot.legend(0, 1)) {
-		plot.x.label("size");
+	RunPlot(const std::string &name, double testSeconds=0.05) : name(name), testSeconds(testSeconds), plotPtr(new Plot(600, 200)), plot(*plotPtr), legend(plot.legend(0, 1)) {
+		std::cout << "\n" << name << "\n";
+		for (size_t i = 0; i < name.size(); ++i) std::cout << "-";
+		std::cout << "\n";
+		plot.x.label(name);
+	}
+	RunPlot(const std::string &name, Plot &plot, double testSeconds=0.05) : name(name), testSeconds(testSeconds), plot(plot), legend(plot.legend(0, 1)) {
+		plot.x.label(name);
 	}
 	~RunPlot() {
 		plot.y.major(0); // auto-scaled range includes 0
 		plot.y.blankLabels().label("speed"); // values don't matter, only the comparison
-		figure.write(name + ".svg");
+		plot.write(name + ".svg");
 	}
 
 	bool firstTick = true;
-	void tick(int n) {
+	void tick(int n, int pow=2) {
+		int log = std::round(std::log(n)/std::log(pow));
+		bool isPower = n == int(std::pow(pow, log));
+		std::string direct = std::to_string(n);
+		std::string sci = std::to_string(pow) + "^" + std::to_string(log);
+		std::string &label = (isPower && direct.size() <= sci.size()) ? direct : sci;
 		if (firstTick) {
 			firstTick = false;
-			plot.x.major(nToX(n), std::to_string(n));
+			plot.x.major(nToX(n), label);
 		} else {
-			plot.x.tick(nToX(n), std::to_string(n));
+			plot.x.tick(nToX(n), label);
 		}
 	}
 
 	template<class Wrapper>
 	Runner<Wrapper> runner(std::string name) {
-		return {name, plot.line(), legend};
+		Runner<Wrapper> result{name, plot.line(), legend};
+		result.testSeconds = testSeconds;
+		result.testChunk = testSeconds/5;
+		return result;
 	}
 };

@@ -11,9 +11,9 @@ out/main: *.cpp *.h ../*.h
 cmake:
 	cmake -B build -G Xcode
 	cmake --build build --config Release
-	mkdir -p out
-	cp build/Release/fft2-tests out
-	cd out && ./fft2-tests
+	mkdir -p out-cmake
+	cp build/Release/fft2-tests out-cmake
+	cd out-cmake && ./fft2-tests
 
 clean:
 	rm -rf out
