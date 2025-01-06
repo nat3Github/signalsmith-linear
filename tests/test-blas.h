@@ -127,6 +127,7 @@ void testBlasOpStrides(std::string name, signalsmith::plot::Plot2D &plot) {
 	testBlasOp<Op, -3, 5>(name, "m3-5", plot);
 	testBlasOp<Op, 13, 7>(name, "13-7", plot);
 	testBlasOp<Op, 4, -4>(name, "4-m4", plot);
+	testBlasOp<Op, 16, 1>(name, "16-1", plot);
 }
 
 void testBlas() {
