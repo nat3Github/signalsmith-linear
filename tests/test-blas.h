@@ -9,8 +9,8 @@ void testBlasOp(std::string opName, std::string strideName, signalsmith::plot::P
 	RunPlot plot("blas-" + opName + "-stride-" + strideName, blasTestSeconds);
 	auto &comparisonLine = comparisonPlot.line();
 
-	auto blasDouble = plot.runner<Op<strideIn, strideOut, true, true>>("BLAS (double)");
-	auto blasFloat = plot.runner<Op<strideIn, strideOut, true, true>>("BLAS (float)");
+	auto blasDouble = plot.runner<Op<strideIn, strideOut, false, true>>("BLAS (double)");
+	auto blasFloat = plot.runner<Op<strideIn, strideOut, false, true>>("BLAS (float)");
 	auto forDouble = plot.runner<Op<strideIn, strideOut, false, false>>("for-dynamic (double)");
 	auto forFloat = plot.runner<Op<strideIn, strideOut, false, false>>("for-dynamic (float)");
 	auto forCDouble = plot.runner<Op<strideIn, strideOut, true, false>>("for-constexpr (double)");
@@ -46,9 +46,29 @@ void testBlasOp(std::string opName, std::string strideName, signalsmith::plot::P
 	}
 }
 
+// like std::abs() and std::max(std::abs()...), but constexpr in C++11
+static constexpr int maxAbs(int a) {
+	return (a >= 0) ? a : -a;
+}
+static constexpr int maxAbs(int a, int b) {
+	return (a >= 0) ? (
+		(b >= 0) ? (
+			(a > b) ? a : b
+		) : (
+			(a > -b) ? a : -b
+		)
+	) : (
+		(b >= 0) ? (
+			(-a > b) ? -a : b
+		) : (
+			(-a > -b) ? -a : -b
+		)
+	);
+}
+
 template<int strideIn=1, int strideOut=1, bool constexprStride=false, bool useBlas=true>
 struct Copy {
-	static constexpr int strideMax = (strideIn > strideOut) ? strideIn : strideOut;
+	static constexpr int strideMax = maxAbs(strideIn, strideOut);
 
 	void prepare(int /*size*/, int /*maxSize*/) {}
 	
@@ -66,7 +86,7 @@ struct Copy {
 
 template<int strideIn=1, int strideOut=1, bool constexprStride=false, bool useBlas=true>
 struct RealNorm2 {
-	static constexpr int strideMax = strideIn;
+	static constexpr int strideMax = maxAbs(strideIn);
 
 	void prepare(int /*size*/, int /*maxSize*/) {}
 	
@@ -82,7 +102,7 @@ struct RealNorm2 {
 };
 template<int strideIn=1, int strideOut=1, bool constexprStride=false, bool useBlas=true>
 struct ComplexNorm2 {
-	static constexpr int strideMax = strideIn;
+	static constexpr int strideMax = maxAbs(strideIn);
 
 	void prepare(int /*size*/, int /*maxSize*/) {}
 	
@@ -100,7 +120,7 @@ struct ComplexNorm2 {
 template<template<int, int, bool, bool> class Op>
 void testBlasOpStrides(std::string name, signalsmith::plot::Plot2D &plot) {
 	plot.y.major(0);
-	plot.x.major(0).label("copy");
+	plot.x.major(0).label(name);
 	
 	testBlasOp<Op, 1, 1>(name, "1", plot);
 	testBlasOp<Op, 2, 2>(name, "2", plot);
@@ -113,7 +133,7 @@ void testBlas() {
 	signalsmith::plot::Figure figure;
 	testBlasOpStrides<Copy>("copy", figure(0, 0).plot(200, 100));
 	testBlasOpStrides<RealNorm2>("norm2r", figure(1, 0).plot(200, 100));
-	testBlasOpStrides<ComplexNorm2>("norm2c", figure(1, 0).plot(200, 100));
+	testBlasOpStrides<ComplexNorm2>("norm2c", figure(2, 0).plot(200, 100));
 	
 	figure.write("blas-comparison.svg");
 }
