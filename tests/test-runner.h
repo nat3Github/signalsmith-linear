@@ -78,8 +78,8 @@ double nToX(int n) {
 
 template<class Wrapper>
 struct Runner {
-	double testSeconds = 0.05;
-	double testChunk = 0.01;
+	double benchmarkSeconds = 0.05;
+	double benchmarkChunk = 0.01;
 
 	std::string name;
 	signalsmith::plot::Line2D &line;
@@ -110,7 +110,7 @@ struct Runner {
 
 		double dummySum = 1;
 		double seconds = 0;
-		while (seconds < testSeconds) {
+		while (seconds < benchmarkSeconds) {
 			stopwatch.start();
 			
 			for (size_t r = 0; r < roundStep; ++r) {
@@ -119,7 +119,7 @@ struct Runner {
 			}
 
 			double lap = stopwatch.seconds(stopwatch.lap());
-			if (lap < testChunk) {
+			if (lap < benchmarkChunk) {
 				roundStep *= 2;
 			} else {
 				seconds += lap;
@@ -136,7 +136,19 @@ struct Runner {
 		
 		if (refData != nullptr) {
 			std::cout << "\terror: " << error << "\n";
-			if (error > 0.000001*data.size) abort(); // sanity check
+			if (error > 0.0001*data.size) { // sanity check
+				std::cout << "rA=" << data.rA << ", rB=" << data.rB << ", rC=" << data.rC << "\n";
+				for (int i = 0; i < data.size && i < 10; ++i) {
+					std::cout << data.rvA[i] << "\t" << data.rvB[i] << "\t" << data.rvC[i] << "\n";
+				}
+
+				auto &rData = *refData;
+				std::cout << "rA=" << rData.rA << ", rB=" << rData.rB << ", rC=" << rData.rC << "\n";
+				for (int i = 0; i < data.size && i < 10; ++i) {
+					std::cout << rData.rvA[i] << "\t" << rData.rvB[i] << "\t" << rData.rvC[i] << "\n";
+				}
+				abort();
+			}
 		} else {
 			volatile double d = dummySum;
 			if (d != dummySum) {
@@ -153,24 +165,26 @@ struct RunPlot {
 	using Plot = signalsmith::plot::Plot2D;
 
 	std::string name;
-	double testSeconds;
+	double benchmarkSeconds;
 	std::unique_ptr<Plot> plotPtr = nullptr;
 	Plot &plot;
 	signalsmith::plot::Legend &legend;
 	
-	RunPlot(const std::string &name, double testSeconds=0.05) : name(name), testSeconds(testSeconds), plotPtr(new Plot(600, 200)), plot(*plotPtr), legend(plot.legend(0, 1)) {
+	RunPlot(const std::string &name, double benchmarkSeconds=0.05) : name(name), benchmarkSeconds(benchmarkSeconds), plotPtr(new Plot(600, 200)), plot(*plotPtr), legend(plot.legend(0, 1)) {
 		std::cout << "\n" << name << "\n";
 		for (size_t i = 0; i < name.size(); ++i) std::cout << "-";
 		std::cout << "\n";
 		plot.x.label(name);
 	}
-	RunPlot(const std::string &name, Plot &plot, double testSeconds=0.05) : name(name), testSeconds(testSeconds), plot(plot), legend(plot.legend(0, 1)) {
+	RunPlot(const std::string &name, Plot &plot, double benchmarkSeconds=0.05) : name(name), benchmarkSeconds(benchmarkSeconds), plot(plot), legend(plot.legend(0, 1)) {
 		plot.x.label(name);
 	}
 	~RunPlot() {
-		plot.y.major(0); // auto-scaled range includes 0
-		plot.y.blankLabels().label("speed"); // values don't matter, only the comparison
-		plot.write(name + ".svg");
+		if (benchmarkSeconds) {
+			plot.y.major(0); // auto-scaled range includes 0
+			plot.y.blankLabels().label("speed"); // values don't matter, only the comparison
+			plot.write(name + ".svg");
+		}
 	}
 
 	bool firstTick = true;
@@ -191,8 +205,8 @@ struct RunPlot {
 	template<class Wrapper>
 	Runner<Wrapper> runner(std::string name) {
 		Runner<Wrapper> result{name, plot.line(), legend};
-		result.testSeconds = testSeconds;
-		result.testChunk = testSeconds/5;
+		result.benchmarkSeconds = benchmarkSeconds;
+		result.benchmarkChunk = benchmarkSeconds/5;
 		return result;
 	}
 };

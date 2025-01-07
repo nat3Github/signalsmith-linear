@@ -1,6 +1,6 @@
-#include "./test-runner.h"
-
 #include "../fft2.h"
+
+#include "./test-runner.h"
 
 // ---------- wrappers
 
@@ -78,7 +78,7 @@ struct SignalsmithDSPWrapper {
 
 // ---------- main code
 
-void testFfts() {
+void testFfts(int maxSize, double benchmarkSeconds) {
 	signalsmith::plot::Plot2D fastSizePlot(200, 200);
 	auto &fastSizeLine = fastSizePlot.line();
 	for (int n = 1; n < 65536; ++n) {
@@ -89,7 +89,7 @@ void testFfts() {
 	fastSizePlot.line().add(0, std::log2(1.25)).add(16 - std::log2(1.25), 16);
 	fastSizePlot.write("fast-sizes.svg");
 	
-	RunPlot plot("ffts");
+	RunPlot plot("ffts", benchmarkSeconds);
 
 	auto simpleDouble = plot.runner<SimpleWrapper<double>>("Simple (double)");
 	auto simpleFloat = plot.runner<SimpleWrapper<float>>("Simple (float)");
@@ -100,7 +100,6 @@ void testFfts() {
 	auto dspDouble = plot.runner<SignalsmithDSPWrapper<double>>("DSP library (double)");
 	auto dspFloat = plot.runner<SignalsmithDSPWrapper<float>>("DSP library (float)");
 
-	int maxSize = 65536*8;
 	auto runSize = [&](int n, int pow3=0, int pow5=0, int pow7=0){
 		double refTime = 1e-8*n*(std::log2(n) + 1); // heuristic for expected computation time, just to compare different sizes
 
