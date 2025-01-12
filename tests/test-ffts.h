@@ -13,7 +13,7 @@ struct SimpleWrapper {
 	}
 	
 	template<class Data>
-	void run(Data &data) {
+	void run(Data &data, int, int) {
 		fft.fft(data.size, data.cpA, data.cpB);
 	}
 };
@@ -27,7 +27,7 @@ struct Pow2Wrapper {
 	}
 
 	template<class Data>
-	void run(Data& data) {
+	void run(Data& data, int, int) {
 		fft.fft(data.cpA, data.cpB);
 	}
 };
@@ -41,7 +41,7 @@ struct SplitWrapper {
 	}
 
 	template<class Data>
-	void run(Data& data) {
+	void run(Data& data, int, int) {
 		fft.fft(data.cpA, data.cpB);
 	}
 };
@@ -56,7 +56,7 @@ struct SignalsmithFFTWrapper {
 	}
 	
 	template<class Data>
-	void run(Data& data) {
+	void run(Data& data, int, int) {
 		fft.fft(data.cpA, data.cpB);
 	}
 };
@@ -71,7 +71,7 @@ struct SignalsmithDSPWrapper {
 	}
 	
 	template<class Data>
-	void run(Data& data) {
+	void run(Data& data, int, int) {
 		fft.fft(data.cpA, data.cpB);
 	}
 };

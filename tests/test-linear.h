@@ -4,26 +4,9 @@
 
 #include <type_traits>
 
-// like std::abs() and std::max(std::abs()...), but constexpr in C++11
-static constexpr int maxAbs(int a) {
-	return (a >= 0) ? a : -a;
+int strideMax(int a, int b) {
+	return std::max(std::abs(a), std::abs(b));
 }
-static constexpr int maxAbs(int a, int b) {
-	return (a >= 0) ? (
-		(b >= 0) ? (
-			(a > b) ? a : b
-		) : (
-			(a > -b) ? a : -b
-		)
-	) : (
-		(b >= 0) ? (
-			(-a > b) ? -a : b
-		) : (
-			(-a > -b) ? -a : -b
-		)
-	);
-}
-
 
 template<typename V, bool useLinear=true>
 struct BaseOp {
@@ -37,36 +20,28 @@ struct BaseOp {
 
 template<typename V, bool useLinear=true>
 struct Copy : public BaseOp<V, useLinear> {
-	static constexpr int strideMax = maxAbs(strideIn, strideOut);
-
 	void run(RunData<V> &data, int strideIn, int strideOut) {
-		this->linear.copy(data.size/strideMax, data.rpA, strideIn, data.rpB, strideOut);
+		this->linear.copy(data.size/strideMax(strideIn, strideOut), data.rpA, strideIn, data.rpB, strideOut);
 	}
 };
 
 template<typename V, bool useLinear=true>
 struct RealNorm2 : public BaseOp<V, useLinear> {
-	static constexpr int strideMax = maxAbs(strideIn);
-
-	void run(RunData<V> &data, int strideIn, int) {
-		data.rA = this->linear.norm2(data.size/strideMax, data.rpA, strideIn);
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		data.rA = this->linear.norm2(data.size/strideMax(strideIn, strideOut), data.rpA, strideIn);
 	}
 };
 template<typename V, bool useLinear=true>
 struct ComplexNorm2 : public BaseOp<V, useLinear> {
-	static constexpr int strideMax = maxAbs(strideIn);
-
-	void run(RunData<V> &data, int strideIn, int) {
-		data.rA = this->linear.norm2(data.size/strideMax, data.cpA, strideIn);
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		data.rA = this->linear.norm2(data.size/strideMax(strideIn, strideOut), data.cpA, strideIn);
 	}
 };
 
 template<typename V, bool useLinear=true>
-struct ComplexNorm2Real : public BaseOp<V, strideIn, strideOut, constexprStride, useLinear> {
-	static constexpr int strideMax = maxAbs(strideIn, strideOut);
-
+struct ComplexNorm2Real : public BaseOp<V, useLinear> {
 	void run(RunData<V> &data, int strideIn, int strideOut) {
-		this->linear.norm2(data.size/strideMax, data.cpA, strideIn, data.rpA, strideOut);
+		this->linear.norm2(data.size/strideMax(strideIn, strideOut), data.cpA, strideIn, data.rpA, strideOut);
 	}
 };
 
@@ -111,13 +86,11 @@ struct TestLinear {
 
 		auto linearDouble = plot.runner<Op<double, true>>("linear (double)");
 		auto linearFloat = plot.runner<Op<float, true>>("linear (float)");
-		auto forDouble = plot.runner<Op<double, false>>("for-dynamic (double)");
-		auto forFloat = plot.runner<Op<float, false>>("for-dynamic (float)");
-		auto forCDouble = plot.runner<Op<double, false>>("for-constexpr (double)");
-		auto forCFloat = plot.runner<Op<float, false>>("for-constexpr (float)");
+		auto forDouble = plot.runner<Op<double, false>>("for-loop (double)");
+		auto forFloat = plot.runner<Op<float, false>>("for-loop (float)");
 
 		auto runSize = [&](int n){
-			int strideN = n/std::abs(linearDouble.wrapper.strideMax);
+			int strideN = n/strideMax(strideIn, strideOut);
 			double refTime = 1e-8*strideN;
 
 			RunData<double> dataDouble(n);
@@ -125,15 +98,13 @@ struct TestLinear {
 
 			RunData<double> refDataDouble = dataDouble;
 			RunData<float> refDataFloat = dataFloat;
-			forDouble.wrapper.run(refDataDouble, 0, nullptr, si, so);
-			forFloat.wrapper.run(refDataFloat, 0, nullptr, si, so);
+			forDouble.wrapper.run(refDataDouble, si, so);
+			forFloat.wrapper.run(refDataFloat, si, so);
 
 			linearDouble.run(dataDouble, refTime, &refDataDouble, si, so);
 			double comparisonRate = linearFloat.run(dataFloat, refTime, &refDataFloat, si, so);
 			forDouble.run(dataDouble, refTime, &refDataDouble, si, so);
 			forFloat.run(dataFloat, refTime, &refDataFloat, si, so);
-			forCDouble.run(dataDouble, refTime, &refDataDouble, si, so);
-			forCFloat.run(dataFloat, refTime, &refDataFloat, si, so);
 			
 			comparisonLine.add(std::log(n), comparisonRate);
 		};
