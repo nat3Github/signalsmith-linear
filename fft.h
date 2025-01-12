@@ -1,5 +1,5 @@
-#ifndef SIGNALSMITH_DSP_FFT2_H
-#define SIGNALSMITH_DSP_FFT2_H
+#ifndef SIGNALSMITH_AUDIO_LINEAR_FFT_H
+#define SIGNALSMITH_AUDIO_LINEAR_FFT_H
 
 #include <complex>
 #include <vector>
@@ -11,7 +11,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-namespace signalsmith { namespace fft2 {
+namespace signalsmith { namespace linear {
 
 /// Extremely simple and portable power-of-2 FFT
 template<typename Sample>
@@ -329,9 +329,9 @@ private:
 
 // Platform-specific
 #if defined(SIGNALSMITH_USE_ACCELERATE)
-#	include "./platform/fft2-accelerate.h"
+#	include "./platform/fft-accelerate.h"
 #elif defined(SIGNALSMITH_USE_IPP)
-#	include "./platform/fft2-ipp.h"
+#	include "./platform/fft-ipp.h"
 #endif
 
 #endif // include guard

@@ -3,7 +3,7 @@
 
 #include <Accelerate/Accelerate.h>
 
-namespace signalsmith { namespace fft2 {
+namespace signalsmith { namespace linear {
 
 template<>
 struct Pow2FFT<float> {

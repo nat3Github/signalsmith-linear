@@ -2,7 +2,7 @@
 #	ifdef __FAST_MATH__
 #		define SMALL_N_STRIDE(complexity, strideMaybe1, ...) if (N <= ((strideMaybe1) == 1 ? int(512/complexity) : int(64/complexity))) return __VA_ARGS__;
 #	else
-#		define SMALL_N_STRIDE(complexity, strideMaybe1, ...) if (N <= int(8/complexity)) return __VA_ARGS__;
+#		define SMALL_N_STRIDE(complexity, strideMaybe1, ...) if (N <= ((strideMaybe1) == 1 ? int(128/complexity) : int(64/complexity))) return __VA_ARGS__;
 #	endif
 #else
 #	define SMALL_N_STRIDE(...)

@@ -1,4 +1,4 @@
-#include "../fft2.h"
+#include "../fft.h"
 
 #include "./test-runner.h"
 
@@ -6,7 +6,7 @@
 
 template<class Sample>
 struct SimpleWrapper {
-	signalsmith::fft2::SimpleFFT<Sample> fft;
+	signalsmith::linear::SimpleFFT<Sample> fft;
 
 	void prepare(int size, int) {
 		fft.resize(size);
@@ -20,7 +20,7 @@ struct SimpleWrapper {
 
 template<class Sample>
 struct Pow2Wrapper {
-	signalsmith::fft2::Pow2FFT<Sample> fft;
+	signalsmith::linear::Pow2FFT<Sample> fft;
 
 	void prepare(int size, int) {
 		fft.resize(size);
@@ -34,7 +34,7 @@ struct Pow2Wrapper {
 
 template<class Sample>
 struct SplitWrapper {
-	signalsmith::fft2::SplitFFT<Sample> fft;
+	signalsmith::linear::SplitFFT<Sample> fft;
 
 	void prepare(int size, int) {
 		fft.resize(size);
@@ -82,7 +82,7 @@ void testFfts(int maxSize, double benchmarkSeconds) {
 	signalsmith::plot::Plot2D fastSizePlot(200, 200);
 	auto &fastSizeLine = fastSizePlot.line();
 	for (int n = 1; n < 65536; ++n) {
-		int fastN = signalsmith::fft2::SplitFFT<double>::fastSizeAbove(n);
+		int fastN = signalsmith::linear::SplitFFT<double>::fastSizeAbove(n);
 		fastSizeLine.add(std::log2(n), std::log2(fastN));
 	}
 	fastSizePlot.line().add(0, 0).add(16, 16);
@@ -129,20 +129,20 @@ void testFfts(int maxSize, double benchmarkSeconds) {
 		}
 
 		if (pow3 + pow5 + pow7 == 0) {
-			simpleDouble.run(dataDouble, refTime, refPtrDouble);
-			simpleFloat.run(dataFloat, refTime, refPtrFloat);
-			pow2Double.run(dataDouble, refTime, refPtrDouble);
-			pow2Float.run(dataFloat, refTime, refPtrFloat);
+			simpleDouble.run(dataDouble, refTime, refPtrDouble, 1, 1);
+			simpleFloat.run(dataFloat, refTime, refPtrFloat, 1, 1);
+			pow2Double.run(dataDouble, refTime, refPtrDouble, 1, 1);
+			pow2Float.run(dataFloat, refTime, refPtrFloat, 1, 1);
 
 			plot.tick(n);
 		}
 		if (pow5 + pow7 == 0) {
-			dspDouble.run(dataDouble, refTime, refPtrDouble);
-			dspFloat.run(dataFloat, refTime, refPtrFloat);
+			dspDouble.run(dataDouble, refTime, refPtrDouble, 1, 1);
+			dspFloat.run(dataFloat, refTime, refPtrFloat, 1, 1);
 		}
-		if (signalsmith::fft2::SplitFFT<double>::fastSizeAbove(n) == size_t(n)) {
-			splitDouble.run(dataDouble, refTime, refPtrDouble);
-			splitFloat.run(dataFloat, refTime, refPtrFloat);
+		if (signalsmith::linear::SplitFFT<double>::fastSizeAbove(n) == size_t(n)) {
+			splitDouble.run(dataDouble, refTime, refPtrDouble, 1, 1);
+			splitFloat.run(dataFloat, refTime, refPtrFloat, 1, 1);
 		}
 	};
 	for (int n = 1; n <= maxSize; n *= 2) {

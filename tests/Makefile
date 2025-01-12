@@ -5,7 +5,7 @@ benchmark: out/main
 	@cd out && ./main benchmark
 
 benchmark-fast: out/main
-	@cd out && ./main benchmark 0.005
+	@cd out && ./main benchmark 0.001
 
 # MAC config
 out/main: *.cpp *.h ../*.h ../platform/*.h
@@ -15,12 +15,20 @@ out/main: *.cpp *.h ../*.h ../platform/*.h
 		-framework Accelerate -DSIGNALSMITH_USE_ACCELERATE -DSIGNALSMITH_USE_CBLAS \
 		main.cpp -o out/main
 
-cmake:
+out-cmake/tests: CMakeLists.txt *.cpp *.h ../*.h ../platform/*.h
 	cmake -B build -G Xcode
 	cmake --build build --config Release
 	mkdir -p out-cmake
-	cp build/Release/fft2-tests out-cmake
-	cd out-cmake && ./fft2-tests benchmark
+	cp build/Release/tests out-cmake
+
+cmake: out-cmake/tests
+	cd out-cmake && ./tests
+
+cmake-benchmark: out-cmake/tests
+	cd out-cmake && ./tests benchmark
+
+cmake-benchmark-fast: out-cmake/tests
+	cd out-cmake && ./tests benchmark 0.001
 
 clean:
 	rm -rf out

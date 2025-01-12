@@ -1,5 +1,5 @@
-#ifndef SIGNALSMITH_DSP_CPPBLAS_H
-#define SIGNALSMITH_DSP_CPPBLAS_H
+#ifndef SIGNALSMITH_AUDIO_LINEAR_H
+#define SIGNALSMITH_AUDIO_LINEAR_H
 
 #include <cmath>
 #include <complex>

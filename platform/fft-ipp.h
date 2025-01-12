@@ -9,7 +9,7 @@
 #include <complex>
 #include <cassert>
 
-namespace signalsmith { namespace fft2 {
+namespace signalsmith { namespace linear {
 
 namespace {
 

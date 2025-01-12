@@ -25,7 +25,7 @@ static constexpr int maxAbs(int a, int b) {
 }
 
 
-template<typename V, int strideIn=1, int strideOut=1, bool constexprStride=false, bool useLinear=true>
+template<typename V, bool useLinear=true>
 struct BaseOp {
 	using Linear = signalsmith::linear::Linear<V, !useLinear>;
 	Linear linear;
@@ -35,59 +35,38 @@ struct BaseOp {
 	}
 };
 
-template<typename V, int strideIn=1, int strideOut=1, bool constexprStride=false, bool useLinear=true>
-struct Copy : public BaseOp<V, strideIn, strideOut, constexprStride, useLinear> {
+template<typename V, bool useLinear=true>
+struct Copy : public BaseOp<V, useLinear> {
 	static constexpr int strideMax = maxAbs(strideIn, strideOut);
 
-	void run(RunData<V> &data) {
-		if (constexprStride) {
-			this->linear.copy(data.size/strideMax, data.rpA, strideIn, data.rpB, strideOut);
-		} else {
-			volatile int si = strideIn;
-			volatile int so = strideOut;
-			this->linear.copy(data.size/strideMax, data.rpA, si, data.rpB, so);
-		}
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.copy(data.size/strideMax, data.rpA, strideIn, data.rpB, strideOut);
 	}
 };
 
-template<typename V, int strideIn=1, int strideOut=1, bool constexprStride=false, bool useLinear=true>
-struct RealNorm2 : public BaseOp<V, strideIn, strideOut, constexprStride, useLinear> {
+template<typename V, bool useLinear=true>
+struct RealNorm2 : public BaseOp<V, useLinear> {
 	static constexpr int strideMax = maxAbs(strideIn);
 
-	void run(RunData<V> &data) {
-		if (constexprStride) {
-			data.rA = this->linear.norm2(data.size/strideMax, data.rpA, strideIn);
-		} else {
-			volatile int si = strideIn;
-			data.rA = this->linear.norm2(data.size/strideMax, data.rpA, si);
-		}
+	void run(RunData<V> &data, int strideIn, int) {
+		data.rA = this->linear.norm2(data.size/strideMax, data.rpA, strideIn);
 	}
 };
-template<typename V, int strideIn=1, int strideOut=1, bool constexprStride=false, bool useLinear=true>
-struct ComplexNorm2 : public BaseOp<V, strideIn, strideOut, constexprStride, useLinear> {
+template<typename V, bool useLinear=true>
+struct ComplexNorm2 : public BaseOp<V, useLinear> {
 	static constexpr int strideMax = maxAbs(strideIn);
 
-	void run(RunData<V> &data) {
-		if (constexprStride) {
-			data.rA = this->linear.norm2(data.size/strideMax, data.cpA, strideIn);
-		} else {
-			volatile int si = strideIn;
-			data.rA = this->linear.norm2(data.size/strideMax, data.cpA, si);
-		}
+	void run(RunData<V> &data, int strideIn, int) {
+		data.rA = this->linear.norm2(data.size/strideMax, data.cpA, strideIn);
 	}
 };
 
-template<typename V, int strideIn=1, int strideOut=1, bool constexprStride=false, bool useLinear=true>
+template<typename V, bool useLinear=true>
 struct ComplexNorm2Real : public BaseOp<V, strideIn, strideOut, constexprStride, useLinear> {
 	static constexpr int strideMax = maxAbs(strideIn, strideOut);
 
-	void run(RunData<V> &data) {
-		if (constexprStride) {
-			this->linear.norm2(data.size/strideMax, data.cpA, strideIn, data.rpA, strideOut);
-		} else {
-			volatile int si = strideIn;
-			this->linear.norm2(data.size/strideMax, data.cpA, si, data.rpA, strideOut);
-		}
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.norm2(data.size/strideMax, data.cpA, strideIn, data.rpA, strideOut);
 	}
 };
 
@@ -106,33 +85,36 @@ struct TestLinear {
 		}
 	}
 
-	template<template<typename, int, int, bool, bool> class Op>
+	template<template<typename, bool> class Op>
 	void opStrides(std::string name) {
 		auto &plot = figure(plotIndex%plotColumns, plotIndex/plotColumns).plot(200, 100);
 		++plotIndex;
 		
 		plot.y.major(0);
 		plot.x.major(0).label(name);
-		
-		testLinearOp<Op, 1, 1>(name, "1", plot);
-		testLinearOp<Op, 2, 2>(name, "2", plot);
-		testLinearOp<Op, -3, 5>(name, "m3-5", plot);
-		testLinearOp<Op, 13, 7>(name, "13-7", plot);
-		testLinearOp<Op, 4, -4>(name, "4-m4", plot);
-		testLinearOp<Op, 16, 1>(name, "16-1", plot);
+
+		testLinearOp<Op>(name, "1", plot, 1, 1);
+		testLinearOp<Op>(name, "2", plot, 2, 2);
+		testLinearOp<Op>(name, "m3-5", plot, -3, 5);
+		testLinearOp<Op>(name, "13-7", plot, 13, 7);
+		testLinearOp<Op>(name, "4-m4", plot, 4, -4);
+		testLinearOp<Op>(name, "16-1", plot, 16, 1);
 	}
 
-	template<template<typename, int, int, bool, bool> class Op, int strideIn=1, int strideOut=1>
-	void testLinearOp(std::string opName, std::string strideName, signalsmith::plot::Plot2D &comparisonPlot) {
+	template<template<typename, bool> class Op>
+	void testLinearOp(std::string opName, std::string strideName, signalsmith::plot::Plot2D &comparisonPlot, int strideIn=1, int strideOut=1) {
 		RunPlot plot("linear-" + opName + "-stride-" + strideName, benchmarkSeconds);
 		auto &comparisonLine = comparisonPlot.line();
 
-		auto linearDouble = plot.runner<Op<double, strideIn, strideOut, false, true>>("linear (double)");
-		auto linearFloat = plot.runner<Op<float, strideIn, strideOut, false, true>>("linear (float)");
-		auto forDouble = plot.runner<Op<double, strideIn, strideOut, false, false>>("for-dynamic (double)");
-		auto forFloat = plot.runner<Op<float, strideIn, strideOut, false, false>>("for-dynamic (float)");
-		auto forCDouble = plot.runner<Op<double, strideIn, strideOut, true, false>>("for-constexpr (double)");
-		auto forCFloat = plot.runner<Op<float, strideIn, strideOut, true, false>>("for-constexpr (float)");
+		volatile int si = strideIn;
+		volatile int so = strideOut;
+
+		auto linearDouble = plot.runner<Op<double, true>>("linear (double)");
+		auto linearFloat = plot.runner<Op<float, true>>("linear (float)");
+		auto forDouble = plot.runner<Op<double, false>>("for-dynamic (double)");
+		auto forFloat = plot.runner<Op<float, false>>("for-dynamic (float)");
+		auto forCDouble = plot.runner<Op<double, false>>("for-constexpr (double)");
+		auto forCFloat = plot.runner<Op<float, false>>("for-constexpr (float)");
 
 		auto runSize = [&](int n){
 			int strideN = n/std::abs(linearDouble.wrapper.strideMax);
@@ -143,15 +125,15 @@ struct TestLinear {
 
 			RunData<double> refDataDouble = dataDouble;
 			RunData<float> refDataFloat = dataFloat;
-			forDouble.wrapper.run(refDataDouble);
-			forFloat.wrapper.run(refDataFloat);
+			forDouble.wrapper.run(refDataDouble, 0, nullptr, si, so);
+			forFloat.wrapper.run(refDataFloat, 0, nullptr, si, so);
 
-			linearDouble.run(dataDouble, refTime, &refDataDouble);
-			double comparisonRate = linearFloat.run(dataFloat, refTime, &refDataFloat);
-			forDouble.run(dataDouble, refTime, &refDataDouble);
-			forFloat.run(dataFloat, refTime, &refDataFloat);
-			forCDouble.run(dataDouble, refTime, &refDataDouble);
-			forCFloat.run(dataFloat, refTime, &refDataFloat);
+			linearDouble.run(dataDouble, refTime, &refDataDouble, si, so);
+			double comparisonRate = linearFloat.run(dataFloat, refTime, &refDataFloat, si, so);
+			forDouble.run(dataDouble, refTime, &refDataDouble, si, so);
+			forFloat.run(dataFloat, refTime, &refDataFloat, si, so);
+			forCDouble.run(dataDouble, refTime, &refDataDouble, si, so);
+			forCFloat.run(dataFloat, refTime, &refDataFloat, si, so);
 			
 			comparisonLine.add(std::log(n), comparisonRate);
 		};

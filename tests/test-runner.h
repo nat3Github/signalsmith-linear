@@ -92,19 +92,19 @@ struct Runner {
 	Runner(Runner &&other) : name(other.name), line(other.line), wrapper(other.wrapper) {}
 
 	template<class Data>
-	double run(const Data &data, double refTime=1, const Data *refData=nullptr) {
+	double run(const Data &data, double refTime, const Data *refData, int strideIn, int strideOut) {
 		Data copy = data;
-		run(copy, refTime, refData);
+		run(copy, refTime, refData, strideIn, strideOut);
 	}
 
 	template<class Data>
-	double run(Data &data, double refTime=1, const Data *refData=nullptr) {
+	double run(Data &data, double refTime, const Data *refData, int strideIn, int strideOut) {
 		wrapper.prepare(data.size, data.maxSize);
 		size_t rounds = 0, roundStep = 1;
 
 		double error = 0;
 		if (refData != nullptr) {
-			wrapper.run(data);
+			wrapper.run(data, strideIn, strideOut);
 			error = data.distance(*refData);
 		}
 
@@ -114,7 +114,7 @@ struct Runner {
 			stopwatch.start();
 			
 			for (size_t r = 0; r < roundStep; ++r) {
-				wrapper.run(data);
+				wrapper.run(data, strideIn, strideOut);
 				dummySum += data.rvA[0];
 			}
 

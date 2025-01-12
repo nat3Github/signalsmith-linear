@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(fft2-tests VERSION 1.0.0)
+project(linear-tests VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 11)
 
 include(FetchContent)
@@ -24,7 +24,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(signalsmith_plot)
 
-add_subdirectory(".." ${CMAKE_CURRENT_BINARY_DIR}/fft2)
+add_subdirectory(".." ${CMAKE_CURRENT_BINARY_DIR}/signalsmith-linear)
 
-add_executable(fft2-tests ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
-target_link_libraries(fft2-tests PRIVATE fft2)
+add_executable(tests ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
+target_link_libraries(tests PRIVATE signalsmith-linear)
