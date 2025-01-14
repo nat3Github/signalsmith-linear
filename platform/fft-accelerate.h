@@ -1,6 +1,3 @@
-#ifndef FFT2_FFT2_ACCELERATE_H
-#define FFT2_FFT2_ACCELERATE_H
-
 #include <Accelerate/Accelerate.h>
 
 namespace signalsmith { namespace linear {
@@ -16,7 +13,7 @@ struct Pow2FFT<float> {
 		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
 	}
 
-	void resize(int size) {
+	void resize(size_t size) {
 		_size = size;
 		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
 		log2 = std::round(std::log2(size));
@@ -58,7 +55,7 @@ struct Pow2FFT<double> {
 		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
 	}
 
-	void resize(int size) {
+	void resize(size_t size) {
 		_size = size;
 		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
 		log2 = std::round(std::log2(size));
@@ -91,5 +88,3 @@ private:
 };
 
 }} // namespace
-
-#endif // include guard

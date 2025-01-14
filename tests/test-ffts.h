@@ -82,7 +82,7 @@ void testFfts(int maxSize, double benchmarkSeconds) {
 	signalsmith::plot::Plot2D fastSizePlot(200, 200);
 	auto &fastSizeLine = fastSizePlot.line();
 	for (int n = 1; n < 65536; ++n) {
-		int fastN = signalsmith::linear::SplitFFT<double>::fastSizeAbove(n);
+		size_t fastN = signalsmith::linear::SplitFFT<double>::fastSizeAbove(n);
 		fastSizeLine.add(std::log2(n), std::log2(fastN));
 	}
 	fastSizePlot.line().add(0, 0).add(16, 16);

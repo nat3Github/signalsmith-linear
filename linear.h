@@ -6,24 +6,77 @@
 
 namespace signalsmith { namespace linear {
 
-/// Common linear operators (not thread-safe - use one per thread)
+template<typename V>
+struct ConstSplitComplex {
+	const V *real, *imag;
+	ConstSplitComplex(const V *real, const V *imag) : real(real), imag(imag) {}
+	
+	std::complex<V> get(std::ptrdiff_t i) const {
+		return {real[i], imag[i]};
+	}
+	
+	ConstSplitComplex & operator +=(std::ptrdiff_t i) {
+		real += i;
+		imag += i;
+		return *this;
+	}
+	ConstSplitComplex & operator -=(std::ptrdiff_t i) {
+		real -= i;
+		imag -= i;
+		return *this;
+	}
+};
+
+template<typename V>
+struct SplitComplex {
+	V *real, *imag;
+	SplitComplex(V *real, V *imag) : real(real), imag(imag) {}
+
+	operator ConstSplitComplex<V>() const {
+		return {real, imag};
+	}
+
+	std::complex<V> get(std::ptrdiff_t i) const {
+		return {real[i], imag[i]};
+	}
+
+	void set(std::ptrdiff_t i, const std::complex<V> &v) {
+		real[i] = v.real();
+		imag[i] = v.imag();
+	}
+
+	SplitComplex & operator +=(std::ptrdiff_t i) {
+		real += i;
+		imag += i;
+		return *this;
+	}
+	SplitComplex & operator -=(std::ptrdiff_t i) {
+		real -= i;
+		imag -= i;
+		return *this;
+	}
+};
+
+/// Common linear operators (may contain temporary storage - use one per thread)
 template<typename V, bool onlyGeneric=false>
 struct Linear;
 
 template<typename V, bool onlyGeneric=false>
 struct LinearImplBase {
 	using CV = std::complex<V>;
+	using SV = SplitComplex<V>;
+	using SVc = ConstSplitComplex<V>;
 
 	/// Guarantees no operation will allocate if `N <= maxSize`
 	/// This does nothing in the base implementation, but specialisations may working memory.
-	void reserve(int /*maxSize*/) {}
+	void reserve(size_t /*maxSize*/) {}
 
-#define LINEAR_CVX(ReturnType, fnName, XType, setupExpr, returnExpr, ...) \
-	ReturnType fnName(const int N, const XType *x, const int xStride) { \
+#define LINEAR_VX(ReturnType, fnName, XType, setupExpr, returnExpr, ...) \
+	ReturnType fnName(const int N, XType x, const int xStride) { \
 		if (xStride == 1) { \
 			setupExpr; \
 			for (int i = 0; i < N; ++i) { \
-				auto xi = x[i]; \
+				const int xi = i; \
 				__VA_ARGS__; \
 			} \
 			returnExpr; \
@@ -31,23 +84,24 @@ struct LinearImplBase {
 			if (xStride < 0) x -= (N - 1)*xStride; \
 			setupExpr; \
 			for (int i = 0; i < N; ++i) { \
-				auto xi = x[i*xStride]; \
+				const int xi = i*xStride; \
 				__VA_ARGS__; \
 			} \
 			returnExpr; \
 		} \
 	} \
-	ReturnType fnName(const int N, const XType *x) { \
+	ReturnType fnName(const int N, XType x) { \
 		return subclass().fnName(N, x, 1); \
 	}
 
-#define LINEAR_CVX_VY(ReturnType, fnName, XType, YType, setupExpr, returnExpr, ...) \
-	ReturnType fnName(const int N, const XType *x, const int xStride, YType *y, const int yStride) { \
+
+#define LINEAR_VX_VY(ReturnType, fnName, XType, YType, setupExpr, returnExpr, ...) \
+	ReturnType fnName(const int N, XType x, const int xStride, YType y, const int yStride) { \
 		if (xStride == 1 && yStride == 1) { \
 			setupExpr; \
 			for (int i = 0; i < N; ++i) { \
-				auto xi = x[i]; \
-				auto &yi = y[i]; \
+				const int xi = i; \
+				const int yi = i; \
 				__VA_ARGS__; \
 			} \
 			returnExpr; \
@@ -56,55 +110,68 @@ struct LinearImplBase {
 			if (yStride < 0) y -= (N - 1)*yStride; \
 			setupExpr; \
 			for (int i = 0; i < N; ++i) { \
-				auto xi = x[i*xStride]; \
-				auto &yi = y[i*yStride]; \
+				const int xi = i*xStride; \
+				const int yi = i*yStride; \
 				__VA_ARGS__; \
 			} \
 			returnExpr; \
 		} \
 	} \
-	void fnName(const int N, const XType *x, YType *y) { \
+	void fnName(const int N, XType x, YType y) { \
 		return subclass().fnName(N, x, 1, y, 1); \
 	}
 
-	LINEAR_CVX_VY(void, copy, V, V,
+	LINEAR_VX_VY(void, copy, const V *, V *,
 		/*setup*/,
 		/*return*/,
-		yi = xi;
+		y[yi] = x[xi];
 	)
-	LINEAR_CVX_VY(void, copy, CV, CV,
+	LINEAR_VX_VY(void, copy, const CV *, CV *,
 		/*setup*/,
 		/*return*/,
-		yi = xi;
+		y[yi] = x[xi];
 	)
 
-	LINEAR_CVX(V, norm2, V,
+	LINEAR_VX(V, norm2, const V *,
 		V sum2 = 0,
 		return sum2,
-		sum2 += xi*xi;
+		V v = x[xi];
+		sum2 += v*v;
 	)
-	LINEAR_CVX(V, norm2, CV,
+	LINEAR_VX(V, norm2, const CV *,
 		V sum2 = 0,
 		return sum2,
-		auto vr = xi.real(), vi = xi.imag();
+		CV v = x[xi];
+		auto vr = v.real(), vi = v.imag();
 		sum2 += vr*vr + vi*vi;
 	)
-	LINEAR_CVX_VY(void, norm2, CV, V,
+	LINEAR_VX(V, norm2, SVc ,
+		V sum2 = 0,
+		return sum2,
+		auto vr = x.real[xi], vi = x.imag[xi];
+		sum2 += vr*vr + vi*vi;
+	)
+	LINEAR_VX_VY(void, norm2, const CV *, V *,
 		/*init*/,
 		/*return*/,
-		auto vr = xi.real(), vi = xi.imag();
-		yi = vr*vr + vi*vi;
+		CV v = x[xi];
+		auto vr = v.real(), vi = v.imag();
+		y[yi] = vr*vr + vi*vi;
 	);
-#undef LINEAR_CVX
-#undef LINEAR_CVX_VY
+	LINEAR_VX_VY(void, norm2, SVc, V *,
+		/*init*/,
+		/*return*/,
+		auto vr = x.real[xi], vi = x.imag[xi];
+		y[yi] = vr*vr + vi*vi;
+	);
+#undef LINEAR_VX
+#undef LINEAR_VX_VY
 
 protected:
 	/// Can only be constructed/copied when subclassed
 	LinearImplBase(Linear<V, onlyGeneric> *subclassedThis) {
 		// Tests for equality, and also (at compile-type) type inheritance
-		if (this != subclassedThis) {
-			abort();
-		}
+		if (this != subclassedThis) abort();
 	}
 
 private:
@@ -113,7 +180,7 @@ private:
 	}
 }; // LinearImplBase
 
-/// (Hopefully) faster version, using some acceleration library
+/// The main template, which may be specialised for float/double by faster libraries
 template<typename V, bool onlyGeneric>
 struct Linear : public LinearImplBase<V, onlyGeneric> {
 	Linear() : LinearImplBase<V, onlyGeneric>(this) {}
@@ -121,7 +188,7 @@ struct Linear : public LinearImplBase<V, onlyGeneric> {
 
 }}; // namespace
 
-#if 0//defined(SIGNALSMITH_USE_ACCELERATE)
+#if defined(SIGNALSMITH_USE_ACCELERATE)
 #	include "./platform/linear-accelerate.h"
 #elif 0//defined(SIGNALSMITH_USE_IPP)
 #	include "./platform/linear-ipp.h"

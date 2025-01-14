@@ -19,17 +19,18 @@ struct RunData {
 	
 	Sample rA, rB, rC;
 	Complex cA, cB, cC;
-	std::vector<Sample> rvA, rvB, rvC;
+	std::vector<Sample> rvA, rvB, rvC, svAr, svAi, svBr, svBi, svCr, svCi;
 	std::vector<Complex> cvA, cvB, cvC;
 	Sample *rpA, *rpB, *rpC;
 	Complex *cpA, *cpB, *cpC;
+	signalsmith::linear::SplitComplex<Sample> sA, sB, sC;
 	
-	RunData(int size, int maxSize=-1, int seed=0) : size(size), maxSize(maxSize >= 0 ? maxSize : size), rvA(size), rvB(size), rvC(size), cvA(size), cvB(size), cvC(size), rpA(rvA.data()), rpB(rvB.data()), rpC(rvC.data()), cpA(cvA.data()), cpB(cvB.data()), cpC(cvC.data()) {
+	RunData(int size, int maxSize=-1, int seed=0) : size(size), maxSize(maxSize >= 0 ? maxSize : size), rvA(size), rvB(size), rvC(size), svAr(size), svAi(size), svBr(size), svBi(size), svCr(size), svCi(size), cvA(size), cvB(size), cvC(size), rpA(rvA.data()), rpB(rvB.data()), rpC(rvC.data()), cpA(cvA.data()), cpB(cvB.data()), cpC(cvC.data()), sA({svAr.data(), svAi.data()}), sB({svBr.data(), svBi.data()}), sC({svCr.data(), svCi.data()}) {
 		randomise(seed);
 	}
-	RunData(const RunData &other) : size(other.size), maxSize(other.maxSize), rA(other.rA), rB(other.rB), rC(other.rC), cA(other.cA), cB(other.cB), cC(other.cC), rvA(other.rvA), rvB(other.rvB), rvC(other.rvC), cvA(other.cvA), cvB(other.cvB), cvC(other.cvC), rpA(rvA.data()), rpB(rvB.data()), rpC(rvC.data()), cpA(cvA.data()), cpB(cvB.data()), cpC(cvC.data()) {}
+	RunData(const RunData &other) : size(other.size), maxSize(other.maxSize), rA(other.rA), rB(other.rB), rC(other.rC), cA(other.cA), cB(other.cB), cC(other.cC), rvA(other.rvA), rvB(other.rvB), rvC(other.rvC), svAr(other.svAr), svAi(other.svAi), svBr(other.svBr), svBi(other.svBi), svCr(other.svCr), svCi(other.svCi), cvA(other.cvA), cvB(other.cvB), cvC(other.cvC), rpA(rvA.data()), rpB(rvB.data()), rpC(rvC.data()), cpA(cvA.data()), cpB(cvB.data()), cpC(cvC.data()), sA({svAr.data(), svAi.data()}), sB({svBr.data(), svBi.data()}), sC({svCr.data(), svCi.data()}) {}
 	
-	double distance(const RunData<Sample> &other) {
+	double distance(const RunData<Sample> &other) const {
 		double error2 = 0;
 		
 		for (int i = 0; i < size; ++i) {
@@ -39,6 +40,9 @@ struct RunData {
 			error2 += std::norm(cvA[i] - other.cvA[i]);
 			error2 += std::norm(cvB[i] - other.cvB[i]);
 			error2 += std::norm(cvC[i] - other.cvC[i]);
+			error2 += std::norm(sA.get(i) - other.sA.get(i));
+			error2 += std::norm(sB.get(i) - other.sB.get(i));
+			error2 += std::norm(sC.get(i) - other.sC.get(i));
 		}
 		error2 /= size;
 
@@ -137,15 +141,15 @@ struct Runner {
 		if (refData != nullptr) {
 			std::cout << "\terror: " << error << "\n";
 			if (error > 0.0001*data.size) { // sanity check
-				std::cout << "rA=" << data.rA << ", rB=" << data.rB << ", rC=" << data.rC << "\n";
+				std::cout << "\nrA=" << data.rA << ", rB=" << data.rB << ", rC=" << data.rC << ", cA=" << data.cA << ", cB=" << data.cB << ", cC=" << data.cC << "\n";
 				for (int i = 0; i < data.size && i < 10; ++i) {
-					std::cout << data.rvA[i] << "\t" << data.rvB[i] << "\t" << data.rvC[i] << "\n";
+					std::cout << data.rvA[i] << "\t" << data.rvB[i] << "\t" << data.rvC[i] << "\t" << data.cvA[i] << "\t" << data.cvB[i] << "\t" << data.cvC[i] << "\n";
 				}
 
 				auto &rData = *refData;
-				std::cout << "rA=" << rData.rA << ", rB=" << rData.rB << ", rC=" << rData.rC << "\n";
+				std::cout << "\nrA=" << rData.rA << ", rB=" << rData.rB << ", rC=" << rData.rC << ", cA=" << rData.cA << ", cB=" << rData.cB << ", cC=" << rData.cC << "\n";
 				for (int i = 0; i < data.size && i < 10; ++i) {
-					std::cout << rData.rvA[i] << "\t" << rData.rvB[i] << "\t" << rData.rvC[i] << "\n";
+					std::cout << rData.rvA[i] << "\t" << rData.rvB[i] << "\t" << rData.rvC[i] << "\t" << rData.cvA[i] << "\t" << rData.cvB[i] << "\t" << rData.cvC[i] << "\n";
 				}
 				abort();
 			}

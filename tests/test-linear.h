@@ -45,6 +45,20 @@ struct ComplexNorm2Real : public BaseOp<V, useLinear> {
 	}
 };
 
+template<typename V, bool useLinear=true>
+struct SplitNorm2 : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		data.rA = this->linear.norm2(data.size/strideMax(strideIn, strideOut), data.sA, strideIn);
+	}
+};
+
+template<typename V, bool useLinear=true>
+struct SplitNorm2Real : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.norm2(data.size/strideMax(strideIn, strideOut), data.sA, strideIn, data.rpA, strideOut);
+	}
+};
+
 struct TestLinear {
 	int maxSize;
 	double benchmarkSeconds;
@@ -121,5 +135,7 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 	test.opStrides<Copy>("copy");
 	test.opStrides<RealNorm2>("norm2r");
 	test.opStrides<ComplexNorm2>("norm2c");
+	test.opStrides<SplitNorm2>("norm2s");
 	test.opStrides<ComplexNorm2Real>("norm2cr");
+	test.opStrides<SplitNorm2Real>("norm2sr");
 }
