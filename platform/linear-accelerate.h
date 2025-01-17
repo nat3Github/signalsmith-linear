@@ -97,6 +97,39 @@ struct Linear<float> : public LinearImplBase<float> {
 		vDSP_zvmags(&splitX, xStride, y, yStride, N);
 	}
 
+	using Base::mul;
+	void mul(const int N, const float *a, const int aStride, const float *b, const int bStride, float *c, const int cStride) {
+		if (aStride < 0) a += (1 - N)*aStride;
+		if (bStride < 0) b += (1 - N)*bStride;
+		if (cStride < 0) c += (1 - N)*cStride;
+
+		vDSP_vmul(a, aStride, b, bStride, c, cStride, N);
+	}
+	void mul(const int N, const float *a, const int aStride, float *b, const int bStride) {
+		if (aStride < 0) a += (1 - N)*aStride;
+		if (bStride < 0) b += (1 - N)*bStride;
+
+		vDSP_vmul(a, aStride, b, bStride, b, bStride, N);
+	}
+
+	void mul(const int N, const std::complex<float> *a, const int aStride, const std::complex<float> *b, const int bStride, std::complex<float> *c, const int cStride) {
+		if (aStride < 0) a += (1 - N)*aStride;
+		if (bStride < 0) b += (1 - N)*bStride;
+		if (cStride < 0) c += (1 - N)*cStride;
+
+		auto splitA = dspSplit(a), splitB = dspSplit(b), splitC = dspSplit(c);
+		vDSP_zvmul(&splitA, aStride*2, &splitB, bStride*2, &splitC, cStride*2, N, 1);
+	}
+
+	void mul(const int N, ConstSplitComplex<float> a, const int aStride, ConstSplitComplex<float> b, const int bStride, SplitComplex<float> c, const int cStride) {
+		if (aStride < 0) a += (1 - N)*aStride;
+		if (bStride < 0) b += (1 - N)*bStride;
+		if (cStride < 0) c += (1 - N)*cStride;
+
+		auto splitA = dspSplit(a), splitB = dspSplit(b), splitC = dspSplit(c);
+		vDSP_zvmul(&splitA, aStride, &splitB, bStride, &splitC, cStride, N, 1);
+	}
+
 	void reserve(size_t max) {}
 private:
 	static DSPSplitComplex dspSplit(const ConstSplitComplex<float> &x) {

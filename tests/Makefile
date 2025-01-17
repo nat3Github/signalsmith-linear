@@ -1,6 +1,9 @@
 test: out/main
 	@cd out && ./main
 
+dev: out-cmake/tests
+	cd out-cmake && ./tests benchmark 0.001 fft
+
 benchmark: out/main
 	@cd out && ./main benchmark
 
@@ -32,3 +35,5 @@ cmake-benchmark-fast: out-cmake/tests
 
 clean:
 	rm -rf out
+	rm -rf out-cmake
+	rm -rf build

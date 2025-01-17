@@ -3,8 +3,9 @@
 namespace signalsmith { namespace linear {
 
 template<>
-struct Pow2FFT<float> {
+struct Pow2FFT<float> : public ::signalsmith::linear::Linear<float> {
 	using Complex = std::complex<float>;
+	using Linear = ::signalsmith::linear::Linear<float>;
 
 	Pow2FFT(size_t size = 0) {
 		if (size > 0) resize(size);
@@ -45,8 +46,9 @@ private:
 	std::vector<float> splitReal, splitImag;
 };
 template<>
-struct Pow2FFT<double> {
+struct Pow2FFT<double> : public ::signalsmith::linear::Linear<double> {
 	using Complex = std::complex<double>;
+	using Linear = ::signalsmith::linear::Linear<double>;
 
 	Pow2FFT(size_t size = 0) {
 		if (size > 0) resize(size);

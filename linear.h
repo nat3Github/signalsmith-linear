@@ -71,101 +71,207 @@ struct LinearImplBase {
 	/// This does nothing in the base implementation, but specialisations may working memory.
 	void reserve(size_t /*maxSize*/) {}
 
-#define LINEAR_VX(ReturnType, fnName, XType, setupExpr, returnExpr, ...) \
-	ReturnType fnName(const int N, XType x, const int xStride) { \
-		if (xStride == 1) { \
+#define LINEAR_VA(ReturnType, fnName, AType, setupExpr, returnExpr, ...) \
+	ReturnType fnName(const int N, AType a, const int aStride) { \
+		if (aStride == 1) { \
 			setupExpr; \
 			for (int i = 0; i < N; ++i) { \
-				const int xi = i; \
+				const int ai = i; \
 				__VA_ARGS__; \
 			} \
 			returnExpr; \
 		} else { \
-			if (xStride < 0) x -= (N - 1)*xStride; \
+			if (aStride < 0) a -= (N - 1)*aStride; \
 			setupExpr; \
 			for (int i = 0; i < N; ++i) { \
-				const int xi = i*xStride; \
+				const int ai = i*aStride; \
 				__VA_ARGS__; \
 			} \
 			returnExpr; \
 		} \
 	} \
-	ReturnType fnName(const int N, XType x) { \
-		return subclass().fnName(N, x, 1); \
+	ReturnType fnName(const int N, AType a) { \
+		return subclass().fnName(N, a, 1); \
 	}
 
 
-#define LINEAR_VX_VY(ReturnType, fnName, XType, YType, setupExpr, returnExpr, ...) \
-	ReturnType fnName(const int N, XType x, const int xStride, YType y, const int yStride) { \
-		if (xStride == 1 && yStride == 1) { \
+#define LINEAR_VA_VB(ReturnType, fnName, AType, BType, setupExpr, returnExpr, ...) \
+	ReturnType fnName(const int N, AType a, const int aStride, BType b, const int bStride) { \
+		if (aStride == 1 && bStride == 1) { \
 			setupExpr; \
 			for (int i = 0; i < N; ++i) { \
-				const int xi = i; \
-				const int yi = i; \
+				const int ai = i; \
+				const int bi = i; \
 				__VA_ARGS__; \
 			} \
 			returnExpr; \
 		} else { \
-			if (xStride < 0) x -= (N - 1)*xStride; \
-			if (yStride < 0) y -= (N - 1)*yStride; \
+			if (aStride < 0) a -= (N - 1)*aStride; \
+			if (bStride < 0) b -= (N - 1)*bStride; \
 			setupExpr; \
 			for (int i = 0; i < N; ++i) { \
-				const int xi = i*xStride; \
-				const int yi = i*yStride; \
+				const int ai = i*aStride; \
+				const int bi = i*bStride; \
 				__VA_ARGS__; \
 			} \
 			returnExpr; \
 		} \
 	} \
-	void fnName(const int N, XType x, YType y) { \
-		return subclass().fnName(N, x, 1, y, 1); \
+	void fnName(const int N, AType a, BType b) { \
+		return subclass().fnName(N, a, 1, b, 1); \
 	}
 
-	LINEAR_VX_VY(void, copy, const V *, V *,
+#define LINEAR_VA_VB_VC(ReturnType, fnName, AType, BType, CType, setupExpr, returnExpr, ...) \
+	ReturnType fnName(const int N, AType a, const int aStride, BType b, const int bStride, CType c, const int cStride) { \
+		if (aStride == 1 && bStride == 1 && cStride == 1) { \
+			setupExpr; \
+			for (int i = 0; i < N; ++i) { \
+				const int ai = i; \
+				const int bi = i; \
+				const int ci = i; \
+				__VA_ARGS__; \
+			} \
+			returnExpr; \
+		} else { \
+			if (aStride < 0) a -= (N - 1)*aStride; \
+			if (bStride < 0) b -= (N - 1)*bStride; \
+			if (cStride < 0) c -= (N - 1)*cStride; \
+			setupExpr; \
+			for (int i = 0; i < N; ++i) { \
+				const int ai = i*aStride; \
+				const int bi = i*bStride; \
+				const int ci = i*cStride; \
+				__VA_ARGS__; \
+			} \
+			returnExpr; \
+		} \
+	} \
+	void fnName(const int N, AType a, BType b, CType c) { \
+		return subclass().fnName(N, a, 1, b, 1, c, 1); \
+	}
+
+	LINEAR_VA_VB(void, copy, const V *, V *,
 		/*setup*/,
 		/*return*/,
-		y[yi] = x[xi];
+		b[bi] = a[ai];
 	)
-	LINEAR_VX_VY(void, copy, const CV *, CV *,
+	LINEAR_VA_VB(void, copy, const CV *, CV *,
 		/*setup*/,
 		/*return*/,
-		y[yi] = x[xi];
+		b[bi] = a[ai];
 	)
 
-	LINEAR_VX(V, norm2, const V *,
+	LINEAR_VA(V, norm2, const V *,
 		V sum2 = 0,
 		return sum2,
-		V v = x[xi];
+		V v = a[ai];
 		sum2 += v*v;
 	)
-	LINEAR_VX(V, norm2, const CV *,
+	LINEAR_VA(V, norm2, const CV *,
 		V sum2 = 0,
 		return sum2,
-		CV v = x[xi];
+		CV v = a[ai];
 		auto vr = v.real(), vi = v.imag();
 		sum2 += vr*vr + vi*vi;
 	)
-	LINEAR_VX(V, norm2, SVc ,
+	LINEAR_VA(V, norm2, SVc ,
 		V sum2 = 0,
 		return sum2,
-		auto vr = x.real[xi], vi = x.imag[xi];
+		auto vr = a.real[ai], vi = a.imag[ai];
 		sum2 += vr*vr + vi*vi;
 	)
-	LINEAR_VX_VY(void, norm2, const CV *, V *,
+	LINEAR_VA_VB(void, norm2, const CV *, V *,
 		/*init*/,
 		/*return*/,
-		CV v = x[xi];
+		CV v = a[ai];
 		auto vr = v.real(), vi = v.imag();
-		y[yi] = vr*vr + vi*vi;
+		b[bi] = vr*vr + vi*vi;
 	);
-	LINEAR_VX_VY(void, norm2, SVc, V *,
+	LINEAR_VA_VB(void, norm2, SVc, V *,
 		/*init*/,
 		/*return*/,
-		auto vr = x.real[xi], vi = x.imag[xi];
-		y[yi] = vr*vr + vi*vi;
+		auto vr = a.real[ai], vi = a.imag[ai];
+		b[bi] = vr*vr + vi*vi;
 	);
-#undef LINEAR_VX
-#undef LINEAR_VX_VY
+
+	LINEAR_VA_VB_VC(V, mul, const V *, const V *, V *,
+		/*init*/,
+		/*return*/,
+		c[ci] = a[ai]*b[bi];
+	)
+	LINEAR_VA_VB_VC(V, mul, const CV *, const CV *, CV *,
+		/*init*/,
+		/*return*/,
+		auto va = a[ai], vb = b[bi];
+		auto var = va.real(), vai = va.imag(), vbr = vb.real(), vbi = vb.imag();
+		c[ci] = {var*vbr - vai*vbi, var*vbi + vbr*vai};
+	)
+	LINEAR_VA_VB_VC(V, mul, SVc, SVc, SV,
+		/*init*/,
+		/*return*/,
+		auto var = a.real[ai], vai = a.imag[ai], vbr = b.real[bi], vbi = b.imag[bi];
+		c.real[ci] = var*vbr - vai*vbi;
+		c.imag[ci] = var*vbi + vbr*vai;
+	)
+	LINEAR_VA_VB_VC(V, mul, const CV *, const V *, CV *,
+		/*init*/,
+		/*return*/,
+		c[ci] = a[ai]*b[bi];
+	)
+	LINEAR_VA_VB_VC(V, mul, SVc, const V *, SV,
+		/*init*/,
+		/*return*/,
+		auto vb = b[bi];
+		c.real[ci] = a.real[ai]*vb;
+		c.imag[ci] = a.imag[ai]*vb;
+	)
+	LINEAR_VA_VB_VC(V, mul, const V *, const CV *, CV *,
+		/*init*/,
+		/*return*/,
+		c[ci] = a[ai]*b[bi];
+	)
+	LINEAR_VA_VB_VC(V, mul, const V *, SVc, SV,
+		/*init*/,
+		/*return*/,
+		auto va = a[ai];
+		c.real[ci] = va*b.real[bi];
+		c.imag[ci] = va*b.imag[bi];
+	)
+
+	LINEAR_VA_VB(V, mul, const V *, V *,
+		/*init*/,
+		/*return*/,
+		b[bi] = a[ai]*b[bi];
+	)
+	LINEAR_VA_VB(V, mul, const CV *, CV *,
+		/*init*/,
+		/*return*/,
+		auto va = a[ai], vb = b[bi];
+		auto var = va.real(), vai = va.imag(), vbr = vb.real(), vbi = vb.imag();
+		b[bi] = {var*vbr - vai*vbi, var*vbi + vbr*vai};
+	)
+	LINEAR_VA_VB(V, mul, SVc, SV,
+		/*init*/,
+		/*return*/,
+		auto var = a.real[ai], vai = a.imag[ai], vbr = b.real[bi], vbi = b.imag[bi];
+		b.real[bi] = var*vbr - vai*vbi;
+		b.imag[bi] = var*vbi + vbr*vai;
+	)
+	LINEAR_VA_VB(V, mul, const V *, CV *,
+		/*init*/,
+		/*return*/,
+		b[bi] = a[ai]*b[bi];
+	)
+	LINEAR_VA_VB(V, mul, const V *, SV,
+		/*init*/,
+		/*return*/,
+		auto va = a[ai];
+		b.real[bi] *= va;
+		b.imag[bi] *= va;
+	)
+#undef LINEAR_VA
+#undef LINEAR_VA_VB
+#undef LINEAR_VA_VB_VC
 
 protected:
 	/// Can only be constructed/copied when subclassed

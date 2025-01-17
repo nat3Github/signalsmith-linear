@@ -59,6 +59,78 @@ struct SplitNorm2Real : public BaseOp<V, useLinear> {
 	}
 };
 
+template<typename V, bool useLinear=true>
+struct MulR : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.rpA, strideIn, data.rpB, strideOut, data.rpC, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulRip : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.rpA, strideIn, data.rpB, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulC : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.cpA, strideIn, data.cpB, strideOut, data.cpC, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulCip : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.cpA, strideIn, data.cpB, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulCR : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.cpA, strideIn, data.rpB, strideOut, data.cpC, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulRC : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.rpA, strideIn, data.cpB, strideOut, data.cpC, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulRCip : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.rpA, strideIn, data.cpB, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulS : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.sA, strideIn, data.sB, strideOut, data.sC, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulSip : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.sA, strideIn, data.sB, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulSR : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.sA, strideIn, data.rpB, strideOut, data.sC, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulRS : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.rpA, strideIn, data.sB, strideOut, data.sC, strideOut);
+	}
+};
+template<typename V, bool useLinear=true>
+struct MulRSip : public BaseOp<V, useLinear> {
+	void run(RunData<V> &data, int strideIn, int strideOut) {
+		this->linear.mul(data.size/strideMax(strideIn, strideOut), data.rpA, strideIn, data.sB, strideOut);
+	}
+};
 struct TestLinear {
 	int maxSize;
 	double benchmarkSeconds;
@@ -138,4 +210,16 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 	test.opStrides<SplitNorm2>("norm2s");
 	test.opStrides<ComplexNorm2Real>("norm2cr");
 	test.opStrides<SplitNorm2Real>("norm2sr");
+	test.opStrides<MulR>("mulR");
+	test.opStrides<MulRip>("mulRip");
+	test.opStrides<MulC>("mulC");
+	test.opStrides<MulCip>("mulCip");
+	test.opStrides<MulCR>("mulCR");
+	test.opStrides<MulRC>("mulRC");
+	test.opStrides<MulRCip>("mulRCip");
+	test.opStrides<MulS>("mulS");
+	test.opStrides<MulSip>("mulSip");
+	test.opStrides<MulSR>("mulSR");
+	test.opStrides<MulRS>("mulRS");
+	test.opStrides<MulRSip>("mulRSip");
 }

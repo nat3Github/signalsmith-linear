@@ -87,10 +87,11 @@ private:
 	}
 };
 
-/// A power-of-2 only FFT, overridden with platform-specific fast implementations where available
+/// A power-of-2 only FFT, specialised with platform-specific fast implementations where available
 template<typename Sample>
-struct Pow2FFT {
+struct Pow2FFT : private ::signalsmith::linear::Linear<Sample> {
 	using Complex = std::complex<Sample>;
+	using Linear = ::signalsmith::linear::Linear<Sample>;
 	
 	Pow2FFT(size_t size=0) {
 		resize(size);
@@ -98,34 +99,35 @@ struct Pow2FFT {
 	
 	void resize(size_t size) {
 		_size = size;
-		innerFFT.resize(size);
+		simpleFFT.resize(size);
 		tmpTime.resize(size);
 	}
 	
 	void fft(const Complex *time, Complex *freq) {
-		innerFFT.fft(_size, time, freq);
+		simpleFFT.fft(_size, time, freq);
 	}
 	
 	void fftStrideTime(size_t stride, const Complex *time, Complex *freq) {
 		const Complex *input = time;
 		if (stride != 1) {
 			input = tmpTime.data();
-			linear.copy(_size, time, stride, tmpTime.data(), 1);
+			Linear::copy(_size, time, stride, tmpTime.data(), 1);
 		}
-		innerFFT.fft(_size, input, freq);
+		simpleFFT.fft(_size, input, freq);
 	}
 
 private:
 	size_t _size;
 	std::vector<Complex> tmpTime;
-	SimpleFFT<Sample> innerFFT;
-	::signalsmith::linear::Linear<Sample> linear;
+	SimpleFFT<Sample> simpleFFT;
 };
 
 /// An FFT which can be computed in chunks
 template<typename Sample>
-struct SplitFFT {
+struct SplitFFT : public Pow2FFT<Sample> {
 	using Complex = std::complex<Sample>;
+	using InnerFFT = Pow2FFT<Sample>;
+	using Linear = typename InnerFFT::Linear;
 	static constexpr size_t maxSplit = 4;
 	static constexpr size_t minInnerSize = 32;
 	
@@ -151,7 +153,7 @@ struct SplitFFT {
 			outerSize /= 2;
 		}
 		tmpFreq.resize(innerSize);
-		innerFFT.resize(innerSize);
+		InnerFFT::resize(innerSize);
 		
 		outerTwiddles.resize(innerSize*outerSize);
 		for (size_t i = 0; i < innerSize; ++i) {
@@ -201,7 +203,7 @@ struct SplitFFT {
 
 	void ifft(const Complex *freq, Complex *time) {
 		abort(); // not implemented
-		innerFFT.ifft(innerSize, time, freq);
+		InnerFFT::ifft(innerSize, time, freq);
 	}
 private:
 	size_t innerSize, outerSize;
@@ -209,39 +211,33 @@ private:
 	std::vector<Complex> outerTwiddles;
 	std::vector<Complex> dftTwists;
 
-	Pow2FFT<Sample> innerFFT;
-	
 	enum class StepType{firstWithFinal, firstWithoutFinal, middleWithFinal, middleWithoutFinal, finalOrder2, finalOrder3, finalOrder4, finalOrder5};
 	std::vector<StepType> stepTypes;
 	
 	void fftStep(StepType stepType, size_t s, const Complex *time, Complex *freq) {
 		switch (stepType) {
 			case (StepType::firstWithFinal): {
-				innerFFT.fftStrideTime(outerSize, time, freq);
+				InnerFFT::fftStrideTime(outerSize, time, freq);
 				break;
 			}
 			case (StepType::firstWithoutFinal): {
-				innerFFT.fftStrideTime(outerSize, time, freq);
+				InnerFFT::fftStrideTime(outerSize, time, freq);
 				// We're doing the DFT as part of these passes, so duplicate this one
 				for (size_t s = 1; s < outerSize; ++s) {
-					for (size_t i = 0; i < innerSize; ++i) {
-						freq[i + s*innerSize] = freq[i];
-					}
+					Linear::copy(int(innerSize), freq, freq + s*innerSize);
 				}
 				break;
 			}
 			case (StepType::middleWithFinal): {
-				innerFFT.fftStrideTime(outerSize, time + s, tmpFreq.data());
+				InnerFFT::fftStrideTime(outerSize, time + s, tmpFreq.data());
 				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We'll do the final DFT in-place, as extra passes
-				for (size_t i = 0; i < innerSize; ++i) {
-					freq[i + s*innerSize] = tmpFreq[i]*twiddles[i];
-				}
+				Linear::mul(int(innerSize), tmpFreq.data(), twiddles, freq + s*innerSize);
 				break;
 			}
 			case (StepType::middleWithoutFinal): {
-				innerFFT.fftStrideTime(outerSize, time + s, tmpFreq.data());
+				InnerFFT::fftStrideTime(outerSize, time + s, tmpFreq.data());
 				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We have to do the final DFT right here

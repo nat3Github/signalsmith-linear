@@ -96,13 +96,7 @@ struct Runner {
 	Runner(Runner &&other) : name(other.name), line(other.line), wrapper(other.wrapper) {}
 
 	template<class Data>
-	double run(const Data &data, double refTime, const Data *refData, int strideIn, int strideOut) {
-		Data copy = data;
-		run(copy, refTime, refData, strideIn, strideOut);
-	}
-
-	template<class Data>
-	double run(Data &data, double refTime, const Data *refData, int strideIn, int strideOut) {
+	double run(Data data, double refTime, const Data *refData, int strideIn, int strideOut) {
 		wrapper.prepare(data.size, data.maxSize);
 		size_t rounds = 0, roundStep = 1;
 

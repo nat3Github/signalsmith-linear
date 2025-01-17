@@ -36,6 +36,16 @@ int main(int argc, char *argv[]) {
 		}
 		
 	}
-	testLinear(maxSize, benchmarkSeconds);
-	testFfts(maxSize, benchmarkSeconds);
+	if (argc <= 3) {
+		testLinear(maxSize, benchmarkSeconds);
+		testFfts(maxSize, benchmarkSeconds);
+	} else {
+		for (int i = 3; i < argc; ++i) {
+			if (!std::strcmp(argv[i], "fft")) {
+				testFfts(maxSize, benchmarkSeconds);
+			} else if (!std::strcmp(argv[i], "linear")) {
+				testLinear(maxSize, benchmarkSeconds);
+			}
+		}
+	}
 }
