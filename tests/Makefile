@@ -1,22 +1,22 @@
-test: out/main
-	@cd out && ./main
+main: out/tests
+	@cd out && ./tests
 
 dev: out-cmake/tests
 	cd out-cmake && ./tests benchmark 0.001 fft
 
-benchmark: out/main
-	@cd out && ./main benchmark
+benchmark: out/tests
+	@cd out && ./tests benchmark
 
-benchmark-fast: out/main
-	@cd out && ./main benchmark 0.001
+benchmark-fast: out/tests
+	@cd out && ./tests benchmark 0.001
 
 # MAC config
-out/main: *.cpp *.h ../*.h ../platform/*.h
+out/tests: *.cpp *.h ../*.h ../platform/*.h
 	mkdir -p out
 	g++ -std=c++11 -Ofast \
 		-Wall -Wextra -Wfatal-errors -Wpedantic -pedantic-errors \
 		-framework Accelerate -DSIGNALSMITH_USE_ACCELERATE -DSIGNALSMITH_USE_CBLAS \
-		main.cpp -o out/main
+		main.cpp -o out/tests
 
 out-cmake/tests: CMakeLists.txt *.cpp *.h ../*.h ../platform/*.h
 	cmake -B build -G Xcode
