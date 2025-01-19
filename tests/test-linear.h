@@ -139,11 +139,15 @@ struct TestLinear {
 	}
 
 	template<class OpWithArgs>
-	void addOp(std::string plotName) {
+	void addOp(std::string plotName, std::string nameSuffix="") {
 		OpWithArgs opWithArgs;
+		std::string opName = opWithArgs.op.name;
+		if (nameSuffix.size() > 0) {
+			opName += " [" + nameSuffix + "]";
+		}
 		for (size_t i = plotName.size(); i < 12; ++i) std::cout << " ";
 		std::cout << plotName;
-		std::cout << " : " << opWithArgs.op.name << "\n";
+		std::cout << " : " << opName << "\n";
 
 		auto &tinyPlot = tinyFigure(tinyPlotIndex%tinyPlotColumns, tinyPlotIndex/tinyPlotColumns).plot(tinyPlotWidth, tinyPlotHeight);
 		tinyPlot.title(plotName, 0.5, -1);
@@ -159,7 +163,7 @@ struct TestLinear {
 		signalsmith::plot::Plot2D opPlot(bigPlotWidth*1.5, bigPlotHeight);
 		auto &opLegend = opPlot.legend(2, 1);
 		addTicks(opPlot);
-		opPlot.title(opWithArgs.op.name);
+		opPlot.title(opName);
 		struct OpLine {
 			signalsmith::plot::Line2D &main;
 			signalsmith::plot::Line2D &op;
@@ -181,7 +185,7 @@ struct TestLinear {
 			auto &tinyLine = tinyPlot.line();
 			opLines.push_back(OpLine{mainLine, opPlotLine, tinyLine});
 		}
-		legend->add(opLines[0].main, opWithArgs.op.name);
+		legend->add(opLines[0].main, opName);
 		
 		signalsmith::linear::Linear<float> linearFloat;
 		signalsmith::linear::Linear<double> linearDouble;
@@ -342,9 +346,9 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 	test.addOp<OpVoidArBrCr<Div>>("DivR");
 	test.addOp<OpVoidArBr<Mod1>>("Mod1");
 	test.addOp<OpVoidArBr<Abs>>("AbsR");
-	test.addOp<OpVoidArBc<Abs>>("AbsC");
+	test.addOp<OpVoidArBc<Abs>>("AbsC", "for complex b");
 	test.addOp<OpVoidArBc<Norm>>("NormC");
-	test.addOp<OpVoidArBc<SqrtNorm>>("SqrtNorm");
+	test.addOp<OpVoidArBc<SqrtNorm>>("SqrtNormC");
 	test.addOp<OpVoidArBr<Exp>>("ExpR");
 	test.addOp<OpVoidArBrp<Log>>("LogR");
 	test.addOp<OpVoidArBrp<Log10>>("Log10R");

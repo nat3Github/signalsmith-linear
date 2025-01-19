@@ -278,16 +278,15 @@ namespace expression {
 		} \
 	};
 	template<class A>
-	A mod1(A a) {
+	A mod1(const A &a) {
 		return a - std::floor(a);
 	}
 	template<class A>
-	A fastNorm(A a) {
-		a = std::abs(a);
+	A fastNorm(const A &a) {
 		return a*a;
 	}
 	template<class A>
-	A fastNorm(std::complex<A> a) {
+	A fastNorm(const std::complex<A> &a) {
 		A real = a.real(), imag = a.imag();
 		return real*real + imag*imag;
 	}
