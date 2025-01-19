@@ -3,303 +3,314 @@
 
 #include <cmath>
 #include <complex>
+#include <array>
+
+#define SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE 8
+#define SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(value, indexName, ...) \
+	{ \
+		size_t indexName = value; \
+		__VA_ARGS__; \
+	}
+#define SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(indexName, ...) \
+	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(0, indexName, __VA_ARGS__) \
+	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(1, indexName, __VA_ARGS__) \
+	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(2, indexName, __VA_ARGS__) \
+	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(3, indexName, __VA_ARGS__) \
+	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(4, indexName, __VA_ARGS__) \
+	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(5, indexName, __VA_ARGS__) \
+	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(6, indexName, __VA_ARGS__) \
+	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(7, indexName, __VA_ARGS__)
 
 namespace signalsmith { namespace linear {
 
+// Unsized pointers
 template<typename V>
-struct ConstSplitComplex {
-	const V *real, *imag;
-	ConstSplitComplex(const V *real, const V *imag) : real(real), imag(imag) {}
-	
-	std::complex<V> get(std::ptrdiff_t i) const {
-		return {real[i], imag[i]};
-	}
-	
-	ConstSplitComplex & operator +=(std::ptrdiff_t i) {
-		real += i;
-		imag += i;
-		return *this;
-	}
-	ConstSplitComplex & operator -=(std::ptrdiff_t i) {
-		real -= i;
-		imag -= i;
-		return *this;
-	}
+using ConstRealPointer = const V *;
+template<typename V>
+using RealPointer = V *;
+template<typename V>
+using RealChunk = std::array<V, SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE>;
+
+template<typename V>
+using ConstComplexPointer = const std::complex<V> *;
+template<typename V>
+using ComplexPointer = std::complex<V> *;
+template<typename V>
+using ComplexChunk = std::array<std::complex<V>, SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE>;
+
+template<typename V>
+struct ConstSplitPointer {
+	ConstRealPointer<V> real, imag;
+	ConstSplitPointer(ConstRealPointer<V> real, ConstRealPointer<V> imag) : real(real), imag(imag) {}
 };
-
 template<typename V>
-struct SplitComplex {
-	V *real, *imag;
-	SplitComplex(V *real, V *imag) : real(real), imag(imag) {}
-
-	operator ConstSplitComplex<V>() const {
+struct SplitPointer {
+	RealPointer<V> real, imag;
+	SplitPointer(RealPointer<V> real, RealPointer<V> imag) : real(real), imag(imag) {}
+	operator ConstSplitPointer<V>() {
 		return {real, imag};
 	}
-
-	std::complex<V> get(std::ptrdiff_t i) const {
-		return {real[i], imag[i]};
-	}
-
-	void set(std::ptrdiff_t i, const std::complex<V> &v) {
-		real[i] = v.real();
-		imag[i] = v.imag();
-	}
-
-	SplitComplex & operator +=(std::ptrdiff_t i) {
-		real += i;
-		imag += i;
-		return *this;
-	}
-	SplitComplex & operator -=(std::ptrdiff_t i) {
-		real -= i;
-		imag -= i;
-		return *this;
-	}
+};
+template<typename V>
+struct SplitChunk {
+	RealChunk<V> real, imag;
 };
 
-/// Common linear operators (may contain temporary storage - use one per thread)
-template<typename V, bool onlyGeneric=false>
+#define SIGNALSMITH_LINEAR_SIZED_TYPE(Name) \
+	template<typename V> \
+	struct Const##Name { \
+		Const##Name(Const##Name##Pointer<V> pointer, size_t size) : pointer(pointer), size(size) {} \
+		Const##Name##Pointer<V> pointer; \
+		const size_t size; \
+	}; \
+	template<typename V> \
+	struct Name { \
+		Name(Name##Pointer<V> pointer, size_t size) : pointer(pointer), size(size) {} \
+		operator Const##Name<V>() const { \
+			return {pointer, size}; \
+		} \
+		Name##Pointer<V> pointer; \
+		const size_t size; \
+	};
+
+SIGNALSMITH_LINEAR_SIZED_TYPE(Real)
+SIGNALSMITH_LINEAR_SIZED_TYPE(Complex)
+SIGNALSMITH_LINEAR_SIZED_TYPE(Split)
+#undef SIGNALSMITH_LINEAR_SIZED_TYPE
+
+template<typename V>
 struct Linear;
 
-template<typename V, bool onlyGeneric=false>
-struct LinearImplBase {
-	using CV = std::complex<V>;
-	using SV = SplitComplex<V>;
-	using SVc = ConstSplitComplex<V>;
-
-	/// Guarantees no operation will allocate if `N <= maxSize`
-	/// This does nothing in the base implementation, but specialisations may working memory.
-	void reserve(size_t /*maxSize*/) {}
-
-#define LINEAR_VA(ReturnType, fnName, AType, setupExpr, returnExpr, ...) \
-	ReturnType fnName(const int N, AType a, const int aStride) { \
-		if (aStride == 1) { \
-			setupExpr; \
-			for (int i = 0; i < N; ++i) { \
-				const int ai = i; \
-				__VA_ARGS__; \
-			} \
-			returnExpr; \
-		} else { \
-			if (aStride < 0) a -= (N - 1)*aStride; \
-			setupExpr; \
-			for (int i = 0; i < N; ++i) { \
-				const int ai = i*aStride; \
-				__VA_ARGS__; \
-			} \
-			returnExpr; \
-		} \
-	} \
-	ReturnType fnName(const int N, AType a) { \
-		return subclass().fnName(N, a, 1); \
+// Expression templates, which always hold const pointers
+namespace expression {
+	size_t minSize(size_t a, size_t b) {
+		return std::min<size_t>(a, b);
 	}
 
+	// Expressions that just read from a pointer
+	template<typename V>
+	struct ReadableReal {
+		ConstRealPointer<V> pointer;
 
-#define LINEAR_VA_VB(ReturnType, fnName, AType, BType, setupExpr, returnExpr, ...) \
-	ReturnType fnName(const int N, AType a, const int aStride, BType b, const int bStride) { \
-		if (aStride == 1 && bStride == 1) { \
-			setupExpr; \
-			for (int i = 0; i < N; ++i) { \
-				const int ai = i; \
-				const int bi = i; \
-				__VA_ARGS__; \
-			} \
-			returnExpr; \
-		} else { \
-			if (aStride < 0) a -= (N - 1)*aStride; \
-			if (bStride < 0) b -= (N - 1)*bStride; \
-			setupExpr; \
-			for (int i = 0; i < N; ++i) { \
-				const int ai = i*aStride; \
-				const int bi = i*bStride; \
-				__VA_ARGS__; \
-			} \
-			returnExpr; \
-		} \
-	} \
-	void fnName(const int N, AType a, BType b) { \
-		return subclass().fnName(N, a, 1, b, 1); \
+		ReadableReal(ConstRealPointer<V> pointer) : pointer(pointer) {}
+		
+		V get(std::ptrdiff_t i) const {
+			return pointer[i];
+		}
+		RealChunk<V> getChunk(std::ptrdiff_t i) const {
+			RealChunk<V> result;
+			auto *offsetPointer = pointer + i;
+			SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(o, result[o] = offsetPointer[o]);
+			return result;
+		}
+	};
+	template<typename V>
+	struct ReadableComplex {
+		ConstComplexPointer<V> pointer;
+
+		ReadableComplex(ConstComplexPointer<V> pointer) : pointer(pointer) {}
+
+		std::complex<V> get(std::ptrdiff_t i) const {
+			return pointer[i];
+		}
+		ComplexChunk<V> getChunk(std::ptrdiff_t i) const {
+			ComplexChunk<V> result;
+			auto *offsetPointer = pointer + i;
+			SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(o, result[o] = offsetPointer[o]);
+			return result;
+		}
+	};
+	template<typename V>
+	struct ReadableSplit {
+		ConstSplitPointer<V> pointer;
+
+		ReadableSplit(ConstSplitPointer<V> pointer) : pointer(pointer) {}
+
+		std::complex<V> get(std::ptrdiff_t i) const {
+			return {pointer.real[i], pointer.imag[i]};
+		}
+		SplitChunk<V> getChunk(std::ptrdiff_t i) const {
+			SplitChunk<V> result;
+			auto *offsetReal = pointer.real + i;
+			SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(o, result.real[o] = offsetReal[o]);
+			auto *offsetImag = pointer.imag + i;
+			SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(o, result.imag[o] = offsetImag[o]);
+			return result;
+		}
+	};
+	
+	template<typename V>
+	struct WritableReal {
+		Linear<V> &linear;
+		RealPointer<V> pointer;
+		size_t size;
+		WritableReal(Linear<V> &linear, RealPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
+		
+		template<class Expr>
+		WritableReal & operator=(Expr expr) {
+			auto maybeCached = linear.cachedExpr(expr);
+			size_t offset = 0;
+			while (offset + SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE < size) {
+				auto chunk = maybeCached.getChunk(offset);
+				auto *offsetReal = pointer + offset;
+				SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(i, offsetReal[i] = chunk[i]);
+				offset += SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE;
+			}
+			for (size_t i = offset; i < size; ++i) {
+				pointer[i] = maybeCached.get(i);
+			}
+			return *this;
+		}
+
+		V get(std::ptrdiff_t i) const {
+			return pointer[i];
+		}
+		RealChunk<V> getChunk(std::ptrdiff_t i) const {
+			RealChunk<V> result;
+			auto *offsetPointer = pointer + i;
+			SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(o, result[o] = offsetPointer[o]);
+			return result;
+		}
+	};
+	template<typename V>
+	struct WritableComplex {
+		Linear<V> &linear;
+		ComplexPointer<V> pointer;
+		size_t size;
+		WritableComplex(Linear<V> &linear, ComplexPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
+		
+		template<class Expr>
+		WritableComplex & operator=(Expr expr) {
+			auto maybeCached = linear.cachedExpr(expr);
+			size_t offset = 0;
+			while (offset + SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE < size) {
+				auto chunk = maybeCached.getChunk(offset);
+				auto *offsetComplex = pointer + offset;
+				SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(i, offsetComplex[i] = chunk[i]);
+				offset += SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE;
+			}
+			for (size_t i = 0; i < size; ++i) {
+				pointer[i] = maybeCached.get(i);
+			}
+			return *this;
+		}
+
+		std::complex<V> get(std::ptrdiff_t i) const {
+			return pointer[i];
+		}
+		ComplexChunk<V> getChunk(std::ptrdiff_t i) const {
+			ComplexChunk<V> result;
+			auto *offsetPointer = pointer + i;
+			SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(o, result[o] = offsetPointer[o]);
+			return result;
+		}
+	};
+	template<typename V>
+	struct WritableSplit {
+		Linear<V> &linear;
+		SplitPointer<V> pointer;
+		size_t size;
+		WritableSplit(Linear<V> &linear, SplitPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
+		
+		template<class Expr>
+		WritableSplit & operator=(Expr expr) {
+			auto maybeCached = linear.cachedExpr(expr);
+			size_t offset = 0;
+			while (offset + SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE < size) {
+				auto chunk = maybeCached.getChunk(offset);
+				auto *offsetReal = pointer.real + offset;
+				auto *offsetImag = pointer.imag + offset;
+				SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(i, offsetReal[i] = chunk.real[i]);
+				SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(i, offsetImag[i] = chunk.imag[i]);
+				offset += SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE;
+			}
+			for (size_t i = 0; i < size; ++i) {
+				pointer[i] = maybeCached.get(i);
+			}
+			return *this;
+		}
+
+		std::complex<V> get(std::ptrdiff_t i) const {
+			return {pointer.real[i], pointer.imag[i]};
+		}
+		SplitChunk<V> getChunk(std::ptrdiff_t i) const {
+			SplitChunk<V> result;
+			auto *offsetReal = pointer.real + i;
+			SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(o, result.real[o] = offsetReal[o]);
+			auto *offsetImag = pointer.imag + i;
+			SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(o, result.imag[o] = offsetImag[o]);
+			return result;
+		}
+	};
+}
+
+template<typename V>
+struct Linear {
+	void reserve(size_t) {}
+
+	// This is where we'd add in convenience methods
+	template<class BaseExpr>
+	struct Expression : public BaseExpr {
+		template<class ...Args>
+		Expression(Args &&...args) : BaseExpr(std::forward<Args>(args)...) {}
+		
+		auto operator[](std::ptrdiff_t i) -> decltype(BaseExpr::get(i)) const {
+			return BaseExpr::get(i);
+		}
+	};
+	template<class BaseExpr>
+	struct WritableExpression : public Expression<BaseExpr> {
+		template<class ...Args>
+		WritableExpression(Args &&...args) : Expression<BaseExpr>(std::forward<Args>(args)...) {}
+		
+		template<class Expr>
+		WritableExpression & operator=(Expr &&expr) {
+			BaseExpr::operator=(expr);
+			return *this;
+		}
+	};
+
+	// Wrap a pointer as an expression
+	Expression<expression::ReadableReal<V>> wrap(RealPointer<V> pointer) {
+		return {pointer};
+	}
+	Expression<expression::ReadableComplex<V>> wrap(ComplexPointer<V> pointer) {
+		return {pointer};
+	}
+	Expression<expression::ReadableSplit<V>> wrap(SplitPointer<V> pointer) {
+		return {pointer};
 	}
 
-#define LINEAR_VA_VB_VC(ReturnType, fnName, AType, BType, CType, setupExpr, returnExpr, ...) \
-	ReturnType fnName(const int N, AType a, const int aStride, BType b, const int bStride, CType c, const int cStride) { \
-		if (aStride == 1 && bStride == 1 && cStride == 1) { \
-			setupExpr; \
-			for (int i = 0; i < N; ++i) { \
-				const int ai = i; \
-				const int bi = i; \
-				const int ci = i; \
-				__VA_ARGS__; \
-			} \
-			returnExpr; \
-		} else { \
-			if (aStride < 0) a -= (N - 1)*aStride; \
-			if (bStride < 0) b -= (N - 1)*bStride; \
-			if (cStride < 0) c -= (N - 1)*cStride; \
-			setupExpr; \
-			for (int i = 0; i < N; ++i) { \
-				const int ai = i*aStride; \
-				const int bi = i*bStride; \
-				const int ci = i*cStride; \
-				__VA_ARGS__; \
-			} \
-			returnExpr; \
-		} \
-	} \
-	void fnName(const int N, AType a, BType b, CType c) { \
-		return subclass().fnName(N, a, 1, b, 1, c, 1); \
+	// When a length is supplied, make it writable
+	WritableExpression<expression::WritableReal<V>> wrap(RealPointer<V> pointer, size_t size) {
+		return {*this, pointer, size};
+	}
+	WritableExpression<expression::WritableComplex<V>> wrap(ComplexPointer<V> pointer, size_t size) {
+		return {*this, pointer, size};
+	}
+	WritableExpression<expression::WritableSplit<V>> wrap(SplitPointer<V> pointer, size_t size) {
+		return {*this, pointer, size};
 	}
 
-	LINEAR_VA_VB(void, copy, const V *, V *,
-		/*setup*/,
-		/*return*/,
-		b[bi] = a[ai];
-	)
-	LINEAR_VA_VB(void, copy, const CV *, CV *,
-		/*setup*/,
-		/*return*/,
-		b[bi] = a[ai];
-	)
-
-	LINEAR_VA(V, norm2, const V *,
-		V sum2 = 0,
-		return sum2,
-		V v = a[ai];
-		sum2 += v*v;
-	)
-	LINEAR_VA(V, norm2, const CV *,
-		V sum2 = 0,
-		return sum2,
-		CV v = a[ai];
-		auto vr = v.real(), vi = v.imag();
-		sum2 += vr*vr + vi*vi;
-	)
-	LINEAR_VA(V, norm2, SVc ,
-		V sum2 = 0,
-		return sum2,
-		auto vr = a.real[ai], vi = a.imag[ai];
-		sum2 += vr*vr + vi*vi;
-	)
-	LINEAR_VA_VB(void, norm2, const CV *, V *,
-		/*init*/,
-		/*return*/,
-		CV v = a[ai];
-		auto vr = v.real(), vi = v.imag();
-		b[bi] = vr*vr + vi*vi;
-	);
-	LINEAR_VA_VB(void, norm2, SVc, V *,
-		/*init*/,
-		/*return*/,
-		auto vr = a.real[ai], vi = a.imag[ai];
-		b[bi] = vr*vr + vi*vi;
-	);
-
-	LINEAR_VA_VB_VC(V, mul, const V *, const V *, V *,
-		/*init*/,
-		/*return*/,
-		c[ci] = a[ai]*b[bi];
-	)
-	LINEAR_VA_VB_VC(V, mul, const CV *, const CV *, CV *,
-		/*init*/,
-		/*return*/,
-		auto va = a[ai], vb = b[bi];
-		auto var = va.real(), vai = va.imag(), vbr = vb.real(), vbi = vb.imag();
-		c[ci] = {var*vbr - vai*vbi, var*vbi + vbr*vai};
-	)
-	LINEAR_VA_VB_VC(V, mul, SVc, SVc, SV,
-		/*init*/,
-		/*return*/,
-		auto var = a.real[ai], vai = a.imag[ai], vbr = b.real[bi], vbi = b.imag[bi];
-		c.real[ci] = var*vbr - vai*vbi;
-		c.imag[ci] = var*vbi + vbr*vai;
-	)
-	LINEAR_VA_VB_VC(V, mul, const CV *, const V *, CV *,
-		/*init*/,
-		/*return*/,
-		c[ci] = a[ai]*b[bi];
-	)
-	LINEAR_VA_VB_VC(V, mul, SVc, const V *, SV,
-		/*init*/,
-		/*return*/,
-		auto vb = b[bi];
-		c.real[ci] = a.real[ai]*vb;
-		c.imag[ci] = a.imag[ai]*vb;
-	)
-	LINEAR_VA_VB_VC(V, mul, const V *, const CV *, CV *,
-		/*init*/,
-		/*return*/,
-		c[ci] = a[ai]*b[bi];
-	)
-	LINEAR_VA_VB_VC(V, mul, const V *, SVc, SV,
-		/*init*/,
-		/*return*/,
-		auto va = a[ai];
-		c.real[ci] = va*b.real[bi];
-		c.imag[ci] = va*b.imag[bi];
-	)
-
-	LINEAR_VA_VB(V, mul, const V *, V *,
-		/*init*/,
-		/*return*/,
-		b[bi] = a[ai]*b[bi];
-	)
-	LINEAR_VA_VB(V, mul, const CV *, CV *,
-		/*init*/,
-		/*return*/,
-		auto va = a[ai], vb = b[bi];
-		auto var = va.real(), vai = va.imag(), vbr = vb.real(), vbi = vb.imag();
-		b[bi] = {var*vbr - vai*vbi, var*vbi + vbr*vai};
-	)
-	LINEAR_VA_VB(V, mul, SVc, SV,
-		/*init*/,
-		/*return*/,
-		auto var = a.real[ai], vai = a.imag[ai], vbr = b.real[bi], vbi = b.imag[bi];
-		b.real[bi] = var*vbr - vai*vbi;
-		b.imag[bi] = var*vbi + vbr*vai;
-	)
-	LINEAR_VA_VB(V, mul, const V *, CV *,
-		/*init*/,
-		/*return*/,
-		b[bi] = a[ai]*b[bi];
-	)
-	LINEAR_VA_VB(V, mul, const V *, SV,
-		/*init*/,
-		/*return*/,
-		auto va = a[ai];
-		b.real[bi] *= va;
-		b.imag[bi] *= va;
-	)
-#undef LINEAR_VA
-#undef LINEAR_VA_VB
-#undef LINEAR_VA_VB_VC
-
-protected:
-	/// Can only be constructed/copied when subclassed
-	LinearImplBase(Linear<V, onlyGeneric> *subclassedThis) {
-		// Tests for equality, and also (at compile-type) type inheritance
-		if (this != subclassedThis) abort();
+	// If there are fast ways to compute specific expressions, this lets us store that result in temporary space, and then return a pointer expression
+	template<class Expr>
+	Expr cachedExpr(const Expr &expr) {
+		return expr;
 	}
-
-private:
-	Linear<V, onlyGeneric> subclass() {
-		return *(Linear<V, onlyGeneric> *)this;
-	}
-}; // LinearImplBase
-
-/// The main template, which may be specialised for float/double by faster libraries
-template<typename V, bool onlyGeneric>
-struct Linear : public LinearImplBase<V, onlyGeneric> {
-	Linear() : LinearImplBase<V, onlyGeneric>(this) {}
 };
 
 }}; // namespace
 
-#if defined(SIGNALSMITH_USE_ACCELERATE)
-#	include "./platform/linear-accelerate.h"
-#elif 0//defined(SIGNALSMITH_USE_IPP)
-#	include "./platform/linear-ipp.h"
-#elif defined(SIGNALSMITH_USE_CBLAS)
-#	include "./platform/linear-cblas.h"
-#endif
+//#if defined(SIGNALSMITH_USE_ACCELERATE)
+//#	include "./platform/linear-accelerate.h"
+//#elif 0//defined(SIGNALSMITH_USE_IPP)
+//#	include "./platform/linear-ipp.h"
+//#elif defined(SIGNALSMITH_USE_CBLAS)
+//#	include "./platform/linear-cblas.h"
+//#endif
+
+#undef SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE
+#undef SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP
+#undef SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH
 
 #endif // include guard

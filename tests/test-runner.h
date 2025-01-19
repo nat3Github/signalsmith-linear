@@ -14,149 +14,85 @@ template<typename Sample>
 struct RunData {
 	using Complex = std::complex<Sample>;
 
-	const int size;
-	const int maxSize;
+	const size_t size;
+	std::vector<std::vector<Sample>> realVectors;
+	std::vector<std::vector<Complex>> complexVectors;
 	
-	Sample rA, rB, rC;
-	Complex cA, cB, cC;
-	std::vector<Sample> rvA, rvB, rvC, svAr, svAi, svBr, svBi, svCr, svCi;
-	std::vector<Complex> cvA, cvB, cvC;
-	Sample *rpA, *rpB, *rpC;
-	Complex *cpA, *cpB, *cpC;
-	signalsmith::linear::SplitComplex<Sample> sA, sB, sC;
+	RunData(size_t size, int seed=0) : size(size), seed(seed) {}
 	
-	RunData(int size, int maxSize=-1, int seed=0) : size(size), maxSize(maxSize >= 0 ? maxSize : size), rvA(size), rvB(size), rvC(size), svAr(size), svAi(size), svBr(size), svBi(size), svCr(size), svCi(size), cvA(size), cvB(size), cvC(size), rpA(rvA.data()), rpB(rvB.data()), rpC(rvC.data()), cpA(cvA.data()), cpB(cvB.data()), cpC(cvC.data()), sA({svAr.data(), svAi.data()}), sB({svBr.data(), svBi.data()}), sC({svCr.data(), svCi.data()}) {
-		randomise(seed);
+	Sample * real(size_t index) {
+		while (index >= realVectors.size()) {
+			std::default_random_engine engine(seed + realVectors.size());
+			std::uniform_real_distribution<Sample> dist{-1, 1};
+			
+			realVectors.emplace_back(size);
+			for (auto &v : realVectors.back()) v = dist(engine);
+		}
+		return realVectors[index].data();
 	}
-	RunData(const RunData &other) : size(other.size), maxSize(other.maxSize), rA(other.rA), rB(other.rB), rC(other.rC), cA(other.cA), cB(other.cB), cC(other.cC), rvA(other.rvA), rvB(other.rvB), rvC(other.rvC), svAr(other.svAr), svAi(other.svAi), svBr(other.svBr), svBi(other.svBi), svCr(other.svCr), svCi(other.svCi), cvA(other.cvA), cvB(other.cvB), cvC(other.cvC), rpA(rvA.data()), rpB(rvB.data()), rpC(rvC.data()), cpA(cvA.data()), cpB(cvB.data()), cpC(cvC.data()), sA({svAr.data(), svAi.data()}), sB({svBr.data(), svBi.data()}), sC({svCr.data(), svCi.data()}) {}
+	Complex * complex(size_t index) {
+		while (index >= complexVectors.size()) {
+			std::default_random_engine engine(seed + realVectors.size());
+			std::uniform_real_distribution<Sample> dist{-1, 1};
+			
+			complexVectors.emplace_back(size);
+			for (auto &v : complexVectors.back()) {
+				v = {dist(engine), dist(engine)};
+			}
+		}
+		return realVectors[index].data();
+	}
 	
 	double distance(const RunData<Sample> &other) const {
 		double error2 = 0;
 		
-		for (int i = 0; i < size; ++i) {
-			error2 += std::norm(rvA[i] - other.rvA[i]);
-			error2 += std::norm(rvB[i] - other.rvB[i]);
-			error2 += std::norm(rvC[i] - other.rvC[i]);
-			error2 += std::norm(cvA[i] - other.cvA[i]);
-			error2 += std::norm(cvB[i] - other.cvB[i]);
-			error2 += std::norm(cvC[i] - other.cvC[i]);
-			error2 += std::norm(sA.get(i) - other.sA.get(i));
-			error2 += std::norm(sB.get(i) - other.sB.get(i));
-			error2 += std::norm(sC.get(i) - other.sC.get(i));
+		for (size_t vi = 0; vi < realVectors.size(); ++vi) {
+			auto &thisVector = realVectors[vi];
+			auto &otherVector = other.realVectors[vi];
+			for (int i = 0; i < size; ++i) {
+				auto diff = thisVector[i] - otherVector[i];
+				error2 += diff*diff;
+			}
 		}
-		error2 /= size;
-
-		error2 += std::norm(rA - other.rA);
-		error2 += std::norm(rB - other.rB);
-		error2 += std::norm(rC - other.rC);
-		error2 += std::norm(cA - other.cA);
-		error2 += std::norm(cB - other.cB);
-		error2 += std::norm(cC - other.cC);
+		for (size_t vi = 0; vi < complexVectors.size(); ++vi) {
+			auto &thisVector = complexVectors[vi];
+			auto &otherVector = other.complexVectors[vi];
+			for (int i = 0; i < size; ++i) {
+				error2 += std::norm(thisVector[i] - otherVector[i]);
+			}
+		}
 		
-		return std::sqrt(error2);
+		return std::sqrt(error2/size);
 	}
 	
 private:
-	void randomise(int seed) {
-		std::default_random_engine randomEngine(seed);
-
-		std::uniform_real_distribution<Sample> dist{-1, 1};
-		rA = dist(randomEngine);
-		rB = dist(randomEngine);
-		rC = dist(randomEngine);
-		for (auto &v : rvA) v = dist(randomEngine);
-		for (auto &v : rvB) v = dist(randomEngine);
-		for (auto &v : rvC) v = dist(randomEngine);
-		cA = {dist(randomEngine), dist(randomEngine)};
-		cB = {dist(randomEngine), dist(randomEngine)};
-		cC = {dist(randomEngine), dist(randomEngine)};
-		for (auto &v : cvA) v = {dist(randomEngine), dist(randomEngine)};
-		for (auto &v : cvB) v = {dist(randomEngine), dist(randomEngine)};
-		for (auto &v : cvC) v = {dist(randomEngine), dist(randomEngine)};
-	}
+	int seed;
 };
 
-double nToX(int n) {
-	return (n >= 1) ? std::log(n) + 1 : n;
-}
+template<class Fn>
+double runBenchmark(double benchmarkSeconds, Fn &&fn) {
+	double benchmarkChunk = benchmarkSeconds/5;
 
-template<class Wrapper>
-struct Runner {
-	double benchmarkSeconds = 0.05;
-	double benchmarkChunk = 0.01;
-
-	std::string name;
-	signalsmith::plot::Line2D &line;
+	double seconds = 0;
+	size_t rounds = 0, roundStep = 1;
 	Stopwatch stopwatch{false};
-	Wrapper wrapper;
-	
-	Runner(const std::string &name, signalsmith::plot::Line2D &line, signalsmith::plot::Legend &legend) : name(name), line(line) {
-		legend.add(line, name);
-	}
-	Runner(Runner &&other) : name(other.name), line(other.line), wrapper(other.wrapper) {}
-
-	template<class Data>
-	double run(Data data, double refTime, const Data *refData, int strideIn, int strideOut) {
-		wrapper.prepare(data.size, data.maxSize);
-		size_t rounds = 0, roundStep = 1;
-
-		double error = 0;
-		if (refData != nullptr) {
-			wrapper.run(data, strideIn, strideOut);
-			error = data.distance(*refData);
-		}
-
-		double dummySum = 1;
-		double seconds = 0;
-		while (seconds < benchmarkSeconds) {
-			stopwatch.start();
-			
-			for (size_t r = 0; r < roundStep; ++r) {
-				wrapper.run(data, strideIn, strideOut);
-				dummySum += data.rvA[0];
-			}
-
-			double lap = stopwatch.seconds(stopwatch.lap());
-			if (lap < benchmarkChunk) {
-				roundStep *= 2;
-			} else {
-				seconds += lap;
-				rounds += roundStep;
-			}
-		}
-		double rps = rounds/seconds;
-		double scaledRps = rps*refTime;
-		line.add(nToX(data.size), scaledRps);
-
-		std::cout << "\t" << data.size << "\t" << name;
-		for (size_t c = name.size(); c < 23; ++c) std::cout << " ";
-		std::cout << "\tspeed: " << scaledRps;
+	while (seconds < benchmarkSeconds) {
+		stopwatch.start();
 		
-		if (refData != nullptr) {
-			std::cout << "\terror: " << error << "\n";
-			if (error > 0.0001*data.size) { // sanity check
-				std::cout << "\nrA=" << data.rA << ", rB=" << data.rB << ", rC=" << data.rC << ", cA=" << data.cA << ", cB=" << data.cB << ", cC=" << data.cC << "\n";
-				for (int i = 0; i < data.size && i < 10; ++i) {
-					std::cout << data.rvA[i] << "\t" << data.rvB[i] << "\t" << data.rvC[i] << "\t" << data.cvA[i] << "\t" << data.cvB[i] << "\t" << data.cvC[i] << "\n";
-				}
+		for (size_t r = 0; r < roundStep; ++r) {
+			fn();
+		}
 
-				auto &rData = *refData;
-				std::cout << "\nrA=" << rData.rA << ", rB=" << rData.rB << ", rC=" << rData.rC << ", cA=" << rData.cA << ", cB=" << rData.cB << ", cC=" << rData.cC << "\n";
-				for (int i = 0; i < data.size && i < 10; ++i) {
-					std::cout << rData.rvA[i] << "\t" << rData.rvB[i] << "\t" << rData.rvC[i] << "\t" << rData.cvA[i] << "\t" << rData.cvB[i] << "\t" << rData.cvC[i] << "\n";
-				}
-				abort();
-			}
+		double lap = stopwatch.seconds(stopwatch.lap());
+		if (lap < benchmarkChunk) {
+			roundStep *= 2;
 		} else {
-			volatile double d = dummySum;
-			if (d != dummySum) {
-				std::cout << "uses dummySum so the compiler can't ever remove wrapper.run()";
-			}
-			std::cout << "\n";
+			seconds += lap;
+			rounds += roundStep;
 		}
-		
-		return scaledRps;
 	}
+	
+	return rounds/seconds;
 };
 
 struct RunPlot {
@@ -183,28 +119,5 @@ struct RunPlot {
 			plot.y.blankLabels().label("speed"); // values don't matter, only the comparison
 			plot.write(name + ".svg");
 		}
-	}
-
-	bool firstTick = true;
-	void tick(int n, int pow=2) {
-		int log = std::round(std::log(n)/std::log(pow));
-		bool isPower = n == int(std::pow(pow, log));
-		std::string direct = std::to_string(n);
-		std::string sci = std::to_string(pow) + "^" + std::to_string(log);
-		std::string &label = (isPower && direct.size() <= sci.size()) ? direct : sci;
-		if (firstTick) {
-			firstTick = false;
-			plot.x.major(nToX(n), label);
-		} else {
-			plot.x.tick(nToX(n), label);
-		}
-	}
-
-	template<class Wrapper>
-	Runner<Wrapper> runner(std::string name) {
-		Runner<Wrapper> result{name, plot.line(), legend};
-		result.benchmarkSeconds = benchmarkSeconds;
-		result.benchmarkChunk = benchmarkSeconds/5;
-		return result;
 	}
 };
