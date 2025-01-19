@@ -81,6 +81,12 @@ SIGNALSMITH_LINEAR_SIZED_TYPE(Split)
 template<typename V>
 struct Linear;
 
+// Everything we deal with is actually one of these
+template<class BaseExpr>
+struct Expression;
+template<class BaseExpr>
+struct WritableExpression;
+
 // Expression templates, which always hold const pointers
 namespace expression {
 	size_t minSize(size_t a, size_t b) {
@@ -219,33 +225,131 @@ namespace expression {
 			return result;
 		}
 	};
+
+	// + - * / % ^ & | ~ ! = < > += -= *= /= %= ^= &= |= << >> >>= <<= == != <= >= <=>(since C++20) && || ++ -- , ->* -> ( ) [ ]
+/*
+#define SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Name, OP) \
+	template<class Right> \
+	struct Name { \
+		const Right right; \
+		Name(const Right &right) : right(right) {} \
+		auto get(std::ptrdiff_t i) const -> decltype(OP right.get(i)) { \
+			return OP right.get(i); \
+		} \
+	}; \
+	template<class Right> \
+	Expression<Name<Right>> operator OP(const Expression<Right> &right) { \
+		return {right}; \
+	}
+	SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Inc, ++)
+	SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Dec, --)
+	SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Not, !)
+#undef SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX
+*/
+
+#define SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Name, OP) \
+	template<class Left, class Right> \
+	struct Name { \
+		const Left left; \
+		const Right right; \
+		Name(const Left &left, const Right &right) : left(left), right(right) {} \
+		auto get(std::ptrdiff_t i) const -> decltype(left.get(i) OP right.get(i)) { \
+			return left.get(i) OP right.get(i); \
+		} \
+	}; \
+	template<class Left, class Right> \
+	Expression<Name<Left, Right>> operator OP(const Expression<Left> &left, const Expression<Right> &right) { \
+		return {left, right}; \
+	}
+	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Add, +)
+	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Sub, -)
+	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Mul, *)
+	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Div, /)
+#undef SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX
+
+#define SIGNALSMITH_AUDIO_LINEAR_FUNC1(Name, func) \
+	template<class AExpr> \
+	class Name { \
+	public: \
+		const AExpr aExpr; \
+		Name(const AExpr &aExpr) : aExpr(aExpr) {} \
+		auto get(std::ptrdiff_t i) const -> decltype(func(aExpr.get(i))) { \
+			return func(aExpr.get(i)); \
+		} \
+	};
+	template<class A>
+	A mod1(A a) {
+		return a - std::floor(a);
+	}
+	template<class A>
+	A fastNorm(A a) {
+		a = std::abs(a);
+		return a*a;
+	}
+	template<class A>
+	A fastNorm(std::complex<A> a) {
+		A real = a.real(), imag = a.imag();
+		return real*real + imag*imag;
+	}
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Mod1, mod1)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Abs, std::abs)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Norm, fastNorm)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp, std::exp)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log, std::log)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log10, std::log10)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sqrt, std::sqrt)
+#undef SIGNALSMITH_AUDIO_LINEAR_FUNC1
 }
+
+template<class BaseExpr>
+struct Expression : public BaseExpr {
+	template<class ...Args>
+	Expression(Args &&...args) : BaseExpr(std::forward<Args>(args)...) {}
+
+	auto operator[](std::ptrdiff_t i) -> decltype(BaseExpr::get(i)) const {
+		return BaseExpr::get(i);
+	}
+
+	Expression<expression::Mod1<BaseExpr>> mod1() const {
+		return {*this};
+	}
+	Expression<expression::Abs<BaseExpr>> abs() const {
+		return {*this};
+	}
+	Expression<expression::Norm<BaseExpr>> norm() const {
+		return {*this};
+	}
+	Expression<expression::Exp<BaseExpr>> exp() const {
+		return {*this};
+	}
+	Expression<expression::Log<BaseExpr>> log() const {
+		return {*this};
+	}
+	Expression<expression::Log10<BaseExpr>> log10() const {
+		return {*this};
+	}
+	Expression<expression::Sqrt<BaseExpr>> sqrt() const {
+		return {*this};
+	}
+};
+template<class BaseExpr>
+struct PointerExpression : public Expression<BaseExpr> {
+	using Expression<BaseExpr>::Expression;
+};
+template<class BaseExpr>
+struct WritableExpression : public PointerExpression<BaseExpr> {
+	using PointerExpression<BaseExpr>::PointerExpression;
+	
+	template<class Expr>
+	WritableExpression & operator=(Expr &&expr) {
+		BaseExpr::operator=(expr);
+		return *this;
+	}
+};
 
 template<typename V>
 struct Linear {
 	void reserve(size_t) {}
-
-	// This is where we'd add in convenience methods
-	template<class BaseExpr>
-	struct Expression : public BaseExpr {
-		template<class ...Args>
-		Expression(Args &&...args) : BaseExpr(std::forward<Args>(args)...) {}
-		
-		auto operator[](std::ptrdiff_t i) -> decltype(BaseExpr::get(i)) const {
-			return BaseExpr::get(i);
-		}
-	};
-	template<class BaseExpr>
-	struct WritableExpression : public Expression<BaseExpr> {
-		template<class ...Args>
-		WritableExpression(Args &&...args) : Expression<BaseExpr>(std::forward<Args>(args)...) {}
-		
-		template<class Expr>
-		WritableExpression & operator=(Expr &&expr) {
-			BaseExpr::operator=(expr);
-			return *this;
-		}
-	};
 
 	// Wrap a pointer as an expression
 	Expression<expression::ReadableReal<V>> wrap(RealPointer<V> pointer) {
@@ -267,6 +371,11 @@ struct Linear {
 	}
 	WritableExpression<expression::WritableSplit<V>> wrap(SplitPointer<V> pointer, size_t size) {
 		return {*this, pointer, size};
+	}
+	
+	template<class ...Args>
+	auto operator()(Args &&...args) -> decltype(wrap(std::forward<Args>(args)...)) {
+		return wrap(std::forward<Args>(args)...);
 	}
 
 	// If there are fast ways to compute specific expressions, this lets us store that result in temporary space, and then return a pointer expression

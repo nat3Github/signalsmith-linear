@@ -21,12 +21,66 @@ struct OpVoidArBr {
 		op.op(linear.wrap(data.real(0), data.size), linear.wrap(data.real(1), data.size));
 	}
 };
+template<class Op>
+struct OpVoidArBrp {
+	Op op;
+
+	template<typename V>
+	void reference(RunData<V> &data) const {
+		auto a = data.real(0), b = data.positive(0);
+		for (size_t i = 0; i < data.size; ++i) {
+			op.op(a[i], b[i]);
+		}
+	}
+
+	template<typename L, typename V>
+	void linear(L &linear, RunData<V> &data) const {
+		op.op(linear.wrap(data.real(0), data.size), linear.wrap(data.positive(0), data.size));
+	}
+};
+template<class Op>
+struct OpVoidArBc {
+	Op op;
+
+	template<typename V>
+	void reference(RunData<V> &data) const {
+		auto a = data.real(0);
+		auto b = data.complex(0);
+		for (size_t i = 0; i < data.size; ++i) {
+			op.op(a[i], b[i]);
+		}
+	}
+
+	template<typename L, typename V>
+	void linear(L &linear, RunData<V> &data) const {
+		op.op(linear.wrap(data.real(0), data.size), linear.wrap(data.complex(0), data.size));
+	}
+};
+template<class Op>
+struct OpVoidArBrCr {
+	Op op;
+
+	template<typename V>
+	void reference(RunData<V> &data) const {
+		auto a = data.real(0), b = data.real(1), c = data.real(2);
+		for (size_t i = 0; i < data.size; ++i) {
+			op.op(a[i], b[i], c[i]);
+		}
+	}
+
+	template<typename L, typename V>
+	void linear(L &linear, RunData<V> &data) const {
+		auto a = data.real(0), b = data.real(1), c = data.real(2);
+		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size), linear.wrap(c, data.size));
+	}
+};
 
 struct TestLinear {
 	static const int bigPlotWidth = 350, bigPlotHeight = 250;
 	static const int tinyPlotWidth = 80, tinyPlotHeight = 80;
 	int tinyPlotIndex = 0;
 	static const int tinyPlotColumns = 8;
+	signalsmith::plot::Plot2D *firstTinyPlot = nullptr;
 	int maxSize;
 	double benchmarkSeconds;
 
@@ -74,6 +128,7 @@ struct TestLinear {
 		addConfig(0, 1, "double (ref)");
 		addConfig(1, 1, "double (Linear)");
 		legend = &configs[1].plot.legend(2, 1);
+		tinyFigure.style.titlePadding = 0;
 	}
 	TestLinear(const TestLinear &other) = delete;
 	~TestLinear() {
@@ -86,10 +141,20 @@ struct TestLinear {
 	template<class OpWithArgs>
 	void addOp(std::string plotName) {
 		OpWithArgs opWithArgs;
+		for (size_t i = plotName.size(); i < 12; ++i) std::cout << " ";
+		std::cout << plotName;
+		std::cout << " : " << opWithArgs.op.name << "\n";
 
 		auto &tinyPlot = tinyFigure(tinyPlotIndex%tinyPlotColumns, tinyPlotIndex/tinyPlotColumns).plot(tinyPlotWidth, tinyPlotHeight);
-		tinyPlot.x.blank().major(0, "").label(plotName);
-		tinyPlot.y.blank().major(0, "");
+		tinyPlot.title(plotName, 0.5, -1);
+		if (!firstTinyPlot) {
+			tinyPlot.x.blank();
+			tinyPlot.y.blank().major(0, "");
+			firstTinyPlot = &tinyPlot;
+		} else {
+			tinyPlot.x.linkFrom(firstTinyPlot->x);
+			tinyPlot.y.linkFrom(firstTinyPlot->y);
+		}
 		++tinyPlotIndex;
 		signalsmith::plot::Plot2D opPlot(bigPlotWidth*1.5, bigPlotHeight);
 		auto &opLegend = opPlot.legend(2, 1);
@@ -121,6 +186,7 @@ struct TestLinear {
 		signalsmith::linear::Linear<float> linearFloat;
 		signalsmith::linear::Linear<double> linearDouble;
 		auto runSize = [&](int n){
+			std::cout << "\tn = " << n << "\r" << std::flush;
 			linearFloat.reserve(n);
 			linearDouble.reserve(n);
 
@@ -133,8 +199,24 @@ struct TestLinear {
 			opWithArgs.reference(refDataFloat);
 			opWithArgs.linear(linearDouble, dataDouble);
 			opWithArgs.linear(linearFloat, dataFloat);
+			if (dataDouble.distance(refDataDouble) > 1e-12*n) {
+				std::cout << "double: n = " << n << ", error = " << dataDouble.distance(refDataDouble) << "\n";
+				std::cout << "\nReference:\n";
+				refDataDouble.log();
+				std::cout << "\nLinear:\n";
+				dataDouble.log();
+				abort();
+			}
+			if (dataFloat.distance(refDataFloat) > 1e-6*n) {
+				std::cout << "float: n = " << n << ", error = " << dataFloat.distance(refDataFloat) << "\n";
+				std::cout << "\nReference:\n";
+				refDataFloat.log();
+				std::cout << "\nLinear:\n";
+				dataFloat.log();
+				abort();
+			}
 
-			double refTime = n;
+			double refTime = n*1e-8;
 			{
 				RunData<float> copy = dataFloat;
 				opLines[0].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
@@ -165,6 +247,7 @@ struct TestLinear {
 			if (n >= 4) runSize(int(n*M_PI/4));
 			runSize(n);
 		}
+		std::cout << "\t                                \r" << std::flush;
 		
 		if (benchmarkSeconds) {
 			opPlot.write("op-" + plotName + ".svg");
@@ -172,24 +255,98 @@ struct TestLinear {
 	}
 };
 
-struct AssignR {
-	const char *name = "a = b";
-
-	template<class A, class B>
-	void op(A &&a, B &&b) const {
-		a = b;
-	}
+#define TEST_EXPR2(Name, expr) \
+struct Name { \
+	const char *name = #expr; \
+	template<class A, class B> \
+	void op(A &&a, B &&b) const { \
+		expr; \
+	} \
 };
-struct MulR {
-	const char *name = "a = b*c";
-
-	template<class A, class B, class C>
-	void op(A &&a, B &&b, C &&c) const {
-		a = b*c;
-	}
+#define TEST_EXPR3(Name, expr) \
+struct Name { \
+	const char *name = #expr; \
+	template<class A, class B, class C> \
+	void op(A &&a, B &&b, C &&c) const { \
+		expr; \
+	} \
 };
+TEST_EXPR2(Assign, a = b);
+TEST_EXPR3(Add, a = b + c);
+TEST_EXPR3(Sub, a = b - c);
+TEST_EXPR3(Mul, a = b*c);
+TEST_EXPR3(Div, a = b/c);
+
+#define TEST_REAL_METHOD0(Name, scalarExpr, linearExpr) \
+struct Name { \
+	const char *name = #linearExpr; \
+	void op(float &a, float &b) const { \
+		scalarExpr; \
+	} \
+	void op(double &a, double &b) const { \
+		scalarExpr; \
+	} \
+	template<class A, class B> \
+	void op(A &&a, B &&b) const { \
+		linearExpr; \
+	} \
+};
+#define TEST_COMPLEX_METHOD0(Name, scalarExpr, linearExpr) \
+struct Name { \
+	const char *name = #linearExpr; \
+	void op(float &a, float &b) const { \
+		scalarExpr; \
+	} \
+	void op(double &a, double &b) const { \
+		scalarExpr; \
+	} \
+	void op(std::complex<float> &a, std::complex<float> &b) const { \
+		scalarExpr; \
+	} \
+	void op(std::complex<double> &a, std::complex<double> &b) const { \
+		scalarExpr; \
+	} \
+	void op(float &a, std::complex<float> &b) const { \
+		scalarExpr; \
+	} \
+	void op(double &a, std::complex<double> &b) const { \
+		scalarExpr; \
+	} \
+	void op(std::complex<float> &a, float &b) const { \
+		scalarExpr; \
+	} \
+	void op(std::complex<double> &a, double &b) const { \
+		scalarExpr; \
+	} \
+	template<class A, class B> \
+	void op(A &&a, B &&b) const { \
+		linearExpr; \
+	} \
+};
+TEST_REAL_METHOD0(Mod1, a = b - std::floor(b), a = b.mod1());
+TEST_COMPLEX_METHOD0(Abs, a = std::abs(b), a = b.abs());
+TEST_COMPLEX_METHOD0(Norm, a = std::norm(b), a = b.norm());
+TEST_REAL_METHOD0(Exp, a = std::exp(b), a = b.exp());
+TEST_REAL_METHOD0(Log, a = std::log(b), a = b.log());
+TEST_REAL_METHOD0(Log10, a = std::log10(b), a = b.log10());
+TEST_REAL_METHOD0(Sqrt, a = std::sqrt(b), a = b.sqrt());
+TEST_COMPLEX_METHOD0(SqrtNorm, a = std::sqrt(std::norm(b)), a = b.norm().sqrt());
 
 void testLinear(int maxSize, double benchmarkSeconds) {
+	std::cout << "\nExpressions\n-----------\n";
 	TestLinear test(maxSize, benchmarkSeconds);
-	test.addOp<OpVoidArBr<AssignR>>("AssignR");
+	test.addOp<OpVoidArBr<Assign>>("AssignR");
+	test.addOp<OpVoidArBrCr<Add>>("AddR");
+	test.addOp<OpVoidArBrCr<Sub>>("SubR");
+	test.addOp<OpVoidArBrCr<Mul>>("MulR");
+	test.addOp<OpVoidArBrCr<Div>>("DivR");
+	test.addOp<OpVoidArBr<Mod1>>("Mod1");
+	test.addOp<OpVoidArBr<Abs>>("AbsR");
+	test.addOp<OpVoidArBc<Abs>>("AbsC");
+	test.addOp<OpVoidArBc<Norm>>("NormC");
+	test.addOp<OpVoidArBc<SqrtNorm>>("SqrtNorm");
+	test.addOp<OpVoidArBr<Exp>>("ExpR");
+	test.addOp<OpVoidArBrp<Log>>("LogR");
+	test.addOp<OpVoidArBrp<Log10>>("Log10R");
+	test.addOp<OpVoidArBrp<Sqrt>>("Sqrt");
 }

@@ -16,6 +16,7 @@ struct RunData {
 
 	const size_t size;
 	std::vector<std::vector<Sample>> realVectors;
+	std::vector<std::vector<Sample>> positiveVectors;
 	std::vector<std::vector<Complex>> complexVectors;
 	
 	RunData(size_t size, int seed=0) : size(size), seed(seed) {}
@@ -30,6 +31,19 @@ struct RunData {
 		}
 		return realVectors[index].data();
 	}
+	Sample * positive(size_t index) {
+		while (index >= positiveVectors.size()) {
+			std::default_random_engine engine(seed + positiveVectors.size());
+			std::uniform_real_distribution<Sample> dist{0, 1};
+			
+			positiveVectors.emplace_back(size);
+			for (auto &v : positiveVectors.back()) {
+				v = dist(engine);
+				while (v <= 0) v = dist(engine);
+			}
+		}
+		return positiveVectors[index].data();
+	}
 	Complex * complex(size_t index) {
 		while (index >= complexVectors.size()) {
 			std::default_random_engine engine(seed + realVectors.size());
@@ -40,7 +54,7 @@ struct RunData {
 				v = {dist(engine), dist(engine)};
 			}
 		}
-		return realVectors[index].data();
+		return complexVectors[index].data();
 	}
 	
 	double distance(const RunData<Sample> &other) const {
@@ -49,7 +63,15 @@ struct RunData {
 		for (size_t vi = 0; vi < realVectors.size(); ++vi) {
 			auto &thisVector = realVectors[vi];
 			auto &otherVector = other.realVectors[vi];
-			for (int i = 0; i < size; ++i) {
+			for (size_t i = 0; i < size; ++i) {
+				auto diff = thisVector[i] - otherVector[i];
+				error2 += diff*diff;
+			}
+		}
+		for (size_t vi = 0; vi < positiveVectors.size(); ++vi) {
+			auto &thisVector = positiveVectors[vi];
+			auto &otherVector = other.positiveVectors[vi];
+			for (size_t i = 0; i < size; ++i) {
 				auto diff = thisVector[i] - otherVector[i];
 				error2 += diff*diff;
 			}
@@ -57,12 +79,31 @@ struct RunData {
 		for (size_t vi = 0; vi < complexVectors.size(); ++vi) {
 			auto &thisVector = complexVectors[vi];
 			auto &otherVector = other.complexVectors[vi];
-			for (int i = 0; i < size; ++i) {
+			for (size_t i = 0; i < size; ++i) {
 				error2 += std::norm(thisVector[i] - otherVector[i]);
 			}
 		}
 		
 		return std::sqrt(error2/size);
+	}
+	
+	void log() const {
+		for (size_t i = 0; i < realVectors.size(); ++i) {
+			std::cout << "\tr" << i;
+		}
+		for (size_t i = 0; i < complexVectors.size(); ++i) {
+			std::cout << "\tc" << i;
+		}
+		std::cout << "\n";
+		for (size_t i = 0; i < size; ++i) {
+			for (auto &vector : realVectors) {
+				std::cout << "\t" << vector[i];
+			}
+			for (auto &vector : complexVectors) {
+				std::cout << "\t" << vector[i];
+			}
+			std::cout << "\n";
+		}
 	}
 	
 private:
