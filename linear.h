@@ -149,14 +149,7 @@ namespace expression {
 		template<class Expr>
 		WritableReal & operator=(Expr expr) {
 			auto maybeCached = linear.cachedExpr(expr);
-			size_t offset = 0;
-			while (offset + SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE < size) {
-				auto chunk = maybeCached.getChunk(offset);
-				auto *offsetReal = pointer + offset;
-				SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(i, offsetReal[i] = chunk[i]);
-				offset += SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE;
-			}
-			for (size_t i = offset; i < size; ++i) {
+			for (size_t i = 0; i < size; ++i) {
 				pointer[i] = maybeCached.get(i);
 			}
 			return *this;
@@ -182,13 +175,6 @@ namespace expression {
 		template<class Expr>
 		WritableComplex & operator=(Expr expr) {
 			auto maybeCached = linear.cachedExpr(expr);
-			size_t offset = 0;
-			while (offset + SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE < size) {
-				auto chunk = maybeCached.getChunk(offset);
-				auto *offsetComplex = pointer + offset;
-				SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(i, offsetComplex[i] = chunk[i]);
-				offset += SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE;
-			}
 			for (size_t i = 0; i < size; ++i) {
 				pointer[i] = maybeCached.get(i);
 			}
@@ -215,15 +201,6 @@ namespace expression {
 		template<class Expr>
 		WritableSplit & operator=(Expr expr) {
 			auto maybeCached = linear.cachedExpr(expr);
-			size_t offset = 0;
-			while (offset + SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE < size) {
-				auto chunk = maybeCached.getChunk(offset);
-				auto *offsetReal = pointer.real + offset;
-				auto *offsetImag = pointer.imag + offset;
-				SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(i, offsetReal[i] = chunk.real[i]);
-				SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(i, offsetImag[i] = chunk.imag[i]);
-				offset += SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE;
-			}
 			for (size_t i = 0; i < size; ++i) {
 				pointer[i] = maybeCached.get(i);
 			}

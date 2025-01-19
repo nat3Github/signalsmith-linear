@@ -10,8 +10,9 @@ struct OpVoidArBr {
 
 	template<typename V>
 	void reference(RunData<V> &data) const {
+		auto a = data.real(0), b = data.real(1);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.op(data.real(0)[i], data.real(1)[i]);
+			op.op(a[i], b[i]);
 		}
 	}
 
@@ -22,7 +23,10 @@ struct OpVoidArBr {
 };
 
 struct TestLinear {
-	static const int bigPlotWidth = 400, bigPlotHeight = 250;
+	static const int bigPlotWidth = 350, bigPlotHeight = 250;
+	static const int tinyPlotWidth = 80, tinyPlotHeight = 80;
+	int tinyPlotIndex = 0;
+	static const int tinyPlotColumns = 8;
 	int maxSize;
 	double benchmarkSeconds;
 
@@ -31,32 +35,36 @@ struct TestLinear {
 	}
 
 	void addTicks(signalsmith::plot::Plot2D &plot) {
+		plot.y.blank().major(0, "").label("relative speed");
 		plot.x.major(nToX(1), "1");
-		for (int n = 2; n <= maxSize; n *= 2) {
+		for (int n = 4; n <= maxSize; n *= 4) {
 			int log = std::round(std::log2(n));
 			std::string direct = std::to_string(n);
 			std::string sci = "2^" + std::to_string(log);
 			std::string &label = (direct.size() <= sci.size()) ? direct : sci;
+			plot.x.tick(nToX(n/2), "");
 			plot.x.tick(nToX(n), label);
 		}
 	}
 
 	signalsmith::plot::Figure figure;
+	signalsmith::plot::Figure tinyFigure;
 	struct Config {
 		std::string name;
 		signalsmith::plot::Plot2D &plot;
 	};
 	std::vector<Config> configs;
 	void addConfig(int x, int y, const char *name) {
-		configs.push_back({name, figure(x, y).plot(bigPlotWidth, bigPlotHeight)});
+		auto &newPlot = figure(x, y).plot(bigPlotWidth, bigPlotHeight);
+		configs.push_back({name, newPlot});
 		auto &firstPlot = configs[0].plot;
-		auto &newPlot = configs.back().plot;
 		if (configs.size() == 1) {
 			addTicks(firstPlot);
 		} else {
 			newPlot.x.linkFrom(firstPlot.x);
 			newPlot.y.linkFrom(firstPlot.y);
 		}
+		newPlot.title(name);
 	}
 	signalsmith::plot::Legend *legend;
 	
@@ -67,28 +75,36 @@ struct TestLinear {
 		addConfig(1, 1, "double (Linear)");
 		legend = &configs[1].plot.legend(2, 1);
 	}
+	TestLinear(const TestLinear &other) = delete;
 	~TestLinear() {
 		if (benchmarkSeconds) {
-			figure.write("linear-comparison.svg");
+			figure.write("linear.svg");
+			tinyFigure.write("linear-comparison.svg");
 		}
 	}
 
 	template<class OpWithArgs>
 	void addOp(std::string plotName) {
 		OpWithArgs opWithArgs;
-	
-		signalsmith::plot::Plot2D opPlot(bigPlotWidth, bigPlotHeight);
+
+		auto &tinyPlot = tinyFigure(tinyPlotIndex%tinyPlotColumns, tinyPlotIndex/tinyPlotColumns).plot(tinyPlotWidth, tinyPlotHeight);
+		tinyPlot.x.blank().major(0, "").label(plotName);
+		tinyPlot.y.blank().major(0, "");
+		++tinyPlotIndex;
+		signalsmith::plot::Plot2D opPlot(bigPlotWidth*1.5, bigPlotHeight);
 		auto &opLegend = opPlot.legend(2, 1);
-		opPlot.y.major(0);
-		opPlot.x.major(0).label(opWithArgs.op.name);
+		addTicks(opPlot);
+		opPlot.title(opWithArgs.op.name);
 		struct OpLine {
 			signalsmith::plot::Line2D &main;
 			signalsmith::plot::Line2D &op;
+			signalsmith::plot::Line2D &tiny;
 			
 			void add(int n, double y) {
 				double x = nToX(n);
 				main.add(x, y);
 				op.add(x, y);
+				tiny.add(x, y);
 			}
 		};
 		std::vector<OpLine> opLines;
@@ -96,7 +112,9 @@ struct TestLinear {
 			auto &config = configs[opLines.size()];
 			auto &opPlotLine = opPlot.line();
 			opLegend.add(opPlotLine, config.name);
-			opLines.push_back({opPlotLine, config.plot.line()});
+			auto &mainLine = config.plot.line();
+			auto &tinyLine = tinyPlot.line();
+			opLines.push_back(OpLine{mainLine, opPlotLine, tinyLine});
 		}
 		legend->add(opLines[0].main, opWithArgs.op.name);
 		
@@ -113,28 +131,31 @@ struct TestLinear {
 			RunData<float> refDataFloat = dataFloat;
 			opWithArgs.reference(refDataDouble);
 			opWithArgs.reference(refDataFloat);
+			opWithArgs.linear(linearDouble, dataDouble);
+			opWithArgs.linear(linearFloat, dataFloat);
 
+			double refTime = n;
 			{
 				RunData<float> copy = dataFloat;
-				opLines[0].add(n, runBenchmark(benchmarkSeconds, [&](){
+				opLines[0].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
 					opWithArgs.reference(copy);
 				}));
 			}
 			{
 				RunData<float> copy = dataFloat;
-				opLines[1].add(n, runBenchmark(benchmarkSeconds, [&](){
+				opLines[1].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
 					opWithArgs.linear(linearFloat, copy);
 				}));
 			}
 			{
 				RunData<double> copy = dataDouble;
-				opLines[2].add(n, runBenchmark(benchmarkSeconds, [&](){
+				opLines[2].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
 					opWithArgs.reference(copy);
 				}));
 			}
 			{
 				RunData<double> copy = dataDouble;
-				opLines[3].add(n, runBenchmark(benchmarkSeconds, [&](){
+				opLines[3].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
 					opWithArgs.linear(linearDouble, copy);
 				}));
 			}
