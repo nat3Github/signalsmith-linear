@@ -34,8 +34,22 @@ struct Pow2FFT<float> : public ::signalsmith::linear::Linear<float> {
 
 	void fftStrideTime(size_t stride, const Complex* input, Complex* output) {
 		DSPSplitComplex splitComplex{ splitReal.data(), splitImag.data() };
-		vDSP_ctoz((DSPComplex*)input, 2 * stride, &splitComplex, 1, _size);
+		vDSP_ctoz((DSPComplex*)input, 2*stride, &splitComplex, 1, _size);
 		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
+		vDSP_ztoc(&splitComplex, 1, (DSPComplex*)output, 2, _size);
+	}
+
+	void ifft(const Complex* input, Complex* output) {
+		DSPSplitComplex splitComplex{ splitReal.data(), splitImag.data() };
+		vDSP_ctoz((DSPComplex*)input, 2, &splitComplex, 1, _size);
+		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Inverse);
+		vDSP_ztoc(&splitComplex, 1, (DSPComplex*)output, 2, _size);
+	}
+
+	void ifftStrideFreq(size_t stride, const Complex* input, Complex* output) {
+		DSPSplitComplex splitComplex{ splitReal.data(), splitImag.data() };
+		vDSP_ctoz((DSPComplex*)input, 2*stride, &splitComplex, 1, _size);
+		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Inverse);
 		vDSP_ztoc(&splitComplex, 1, (DSPComplex*)output, 2, _size);
 	}
 private:
@@ -79,6 +93,20 @@ struct Pow2FFT<double> : public ::signalsmith::linear::Linear<double> {
 		DSPDoubleSplitComplex splitComplex{ splitReal.data(), splitImag.data() };
 		vDSP_ctozD((DSPDoubleComplex*)input, 2 * stride, &splitComplex, 1, _size);
 		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
+		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex*)output, 2, _size);
+	}
+
+	void ifft(const Complex* input, Complex* output) {
+		DSPDoubleSplitComplex splitComplex{ splitReal.data(), splitImag.data() };
+		vDSP_ctozD((DSPDoubleComplex*)input, 2, &splitComplex, 1, _size);
+		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Inverse);
+		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex*)output, 2, _size);
+	}
+
+	void ifftStrideFreq(size_t stride, const Complex* input, Complex* output) {
+		DSPDoubleSplitComplex splitComplex{ splitReal.data(), splitImag.data() };
+		vDSP_ctozD((DSPDoubleComplex*)input, 2 * stride, &splitComplex, 1, _size);
+		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Inverse);
 		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex*)output, 2, _size);
 	}
 private:

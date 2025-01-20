@@ -57,6 +57,24 @@ struct OpVoidArBc {
 	}
 };
 template<class Op>
+struct OpVoidAcBc {
+	Op op;
+
+	template<typename V>
+	void reference(RunData<V> &data) const {
+		auto a = data.complex(0);
+		auto b = data.complex(1);
+		for (size_t i = 0; i < data.size; ++i) {
+			op.op(a[i], b[i]);
+		}
+	}
+
+	template<typename L, typename V>
+	void linear(L &linear, RunData<V> &data) const {
+		op.op(linear.wrap(data.complex(0), data.size), linear.wrap(data.complex(1), data.size));
+	}
+};
+template<class Op>
 struct OpVoidArBrCr {
 	Op op;
 
@@ -295,7 +313,7 @@ struct Name { \
 		linearExpr; \
 	} \
 };
-#define TEST_COMPLEX_METHOD0(Name, scalarExpr, linearExpr) \
+#define TEST_MIXED_METHOD0(Name, scalarExpr, linearExpr) \
 struct Name { \
 	const char *name = #linearExpr; \
 	void op(float &a, float &b) const { \
@@ -327,14 +345,35 @@ struct Name { \
 		linearExpr; \
 	} \
 };
+#define TEST_COMPLEX_METHOD0(Name, scalarExpr, linearExpr) \
+struct Name { \
+	const char *name = #linearExpr; \
+	void op(std::complex<float> &a, std::complex<float> &b) const { \
+		scalarExpr; \
+	} \
+	void op(std::complex<double> &a, std::complex<double> &b) const { \
+		scalarExpr; \
+	} \
+	void op(std::complex<float> &a, float &b) const { \
+		scalarExpr; \
+	} \
+	void op(std::complex<double> &a, double &b) const { \
+		scalarExpr; \
+	} \
+	template<class A, class B> \
+	void op(A &&a, B &&b) const { \
+		linearExpr; \
+	} \
+};
 TEST_REAL_METHOD0(Mod1, a = b - std::floor(b), a = b.mod1());
-TEST_COMPLEX_METHOD0(Abs, a = std::abs(b), a = b.abs());
-TEST_COMPLEX_METHOD0(Norm, a = std::norm(b), a = b.norm());
+TEST_MIXED_METHOD0(Abs, a = std::abs(b), a = b.abs());
+TEST_MIXED_METHOD0(Norm, a = std::norm(b), a = b.norm());
 TEST_REAL_METHOD0(Exp, a = std::exp(b), a = b.exp());
 TEST_REAL_METHOD0(Log, a = std::log(b), a = b.log());
 TEST_REAL_METHOD0(Log10, a = std::log10(b), a = b.log10());
 TEST_REAL_METHOD0(Sqrt, a = std::sqrt(b), a = b.sqrt());
-TEST_COMPLEX_METHOD0(SqrtNorm, a = std::sqrt(std::norm(b)), a = b.norm().sqrt());
+TEST_MIXED_METHOD0(SqrtNorm, a = std::sqrt(std::norm(b)), a = b.norm().sqrt());
+TEST_COMPLEX_METHOD0(Conj, a = std::conj(b), a = b.conj());
 
 void testLinear(int maxSize, double benchmarkSeconds) {
 	std::cout << "\nExpressions\n-----------\n";
@@ -349,6 +388,7 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 	test.addOp<OpVoidArBc<Abs>>("AbsC", "for complex b");
 	test.addOp<OpVoidArBc<Norm>>("NormC");
 	test.addOp<OpVoidArBc<SqrtNorm>>("SqrtNormC");
+	test.addOp<OpVoidAcBc<Conj>>("ConjC");
 	test.addOp<OpVoidArBr<Exp>>("ExpR");
 	test.addOp<OpVoidArBrp<Log>>("LogR");
 	test.addOp<OpVoidArBrp<Log10>>("Log10R");

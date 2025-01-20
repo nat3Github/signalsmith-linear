@@ -100,27 +100,42 @@ struct Pow2FFT : private ::signalsmith::linear::Linear<Sample> {
 	void resize(size_t size) {
 		_size = size;
 		simpleFFT.resize(size);
-		tmpTime.resize(size);
+		tmp.resize(size);
 	}
 	
 	void fft(const Complex *time, Complex *freq) {
 		simpleFFT.fft(_size, time, freq);
 	}
-	
+
 	void fftStrideTime(size_t stride, const Complex *time, Complex *freq) {
 		const Complex *input = time;
 		if (stride != 1) {
-			input = tmpTime.data();
+			input = tmp.data();
 			for (size_t i = 0; i < _size; ++i) {
-				tmpTime[i] = time[i*stride];
+				tmp[i] = time[i*stride];
 			}
 		}
 		simpleFFT.fft(_size, input, freq);
 	}
 
+	void ifft(const Complex *freq, Complex *time) {
+		simpleFFT.ifft(_size, freq, time);
+	}
+
+	void ifftStrideFreq(size_t stride, const Complex *freq, Complex *time) {
+		const Complex *input = freq;
+		if (stride != 1) {
+			input = tmp.data();
+			for (size_t i = 0; i < _size; ++i) {
+				tmp[i] = freq[i*stride];
+			}
+		}
+		simpleFFT.ifft(_size, input, time);
+	}
+
 private:
 	size_t _size;
-	std::vector<Complex> tmpTime;
+	std::vector<Complex> tmp;
 	SimpleFFT<Sample> simpleFFT;
 };
 
@@ -199,13 +214,14 @@ struct SplitFFT : public Pow2FFT<Sample> {
 	
 	void fft(const Complex *time, Complex *freq) {
 		for (size_t s = 0; s < stepTypes.size(); ++s) {
-			fftStep(stepTypes[s], s, time, freq);
+			fftStep<false>(stepTypes[s], s, time, freq);
 		}
 	}
 
 	void ifft(const Complex *freq, Complex *time) {
-		abort(); // not implemented
-		InnerFFT::ifft(innerSize, time, freq);
+		for (size_t s = 0; s < stepTypes.size(); ++s) {
+			fftStep<true>(stepTypes[s], s, freq, time);
+		}
 	}
 private:
 	size_t innerSize, outerSize;
@@ -216,14 +232,23 @@ private:
 	enum class StepType{firstWithFinal, firstWithoutFinal, middleWithFinal, middleWithoutFinal, finalOrder2, finalOrder3, finalOrder4, finalOrder5};
 	std::vector<StepType> stepTypes;
 	
+	template<bool inverse>
 	void fftStep(StepType stepType, size_t s, const Complex *time, Complex *freq) {
 		switch (stepType) {
 			case (StepType::firstWithFinal): {
-				InnerFFT::fftStrideTime(outerSize, time, freq);
+				if (inverse) {
+					InnerFFT::ifftStrideFreq(outerSize, time, freq);
+				} else {
+					InnerFFT::fftStrideTime(outerSize, time, freq);
+				}
 				break;
 			}
 			case (StepType::firstWithoutFinal): {
-				InnerFFT::fftStrideTime(outerSize, time, freq);
+				if (inverse) {
+					InnerFFT::ifftStrideFreq(outerSize, time, freq);
+				} else {
+					InnerFFT::fftStrideTime(outerSize, time, freq);
+				}
 				// We're doing the DFT as part of these passes, so duplicate this one
 				for (size_t s = 1; s < outerSize; ++s) {
 					auto *offsetFreq = freq + s*innerSize;
@@ -234,20 +259,32 @@ private:
 				break;
 			}
 			case (StepType::middleWithFinal): {
-				InnerFFT::fftStrideTime(outerSize, time + s, tmpFreq.data());
+				if (inverse) {
+					InnerFFT::ifftStrideFreq(outerSize, time + s, tmpFreq.data());
+				} else {
+					InnerFFT::fftStrideTime(outerSize, time + s, tmpFreq.data());
+				}
 				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We'll do the final DFT in-place, as extra passes
-				Linear::wrap(freq + s*innerSize, innerSize) = Linear::wrap(tmpFreq)*Linear::wrap(twiddles);
+				if (inverse) {
+					Linear::wrap(freq + s*innerSize, innerSize) = Linear::wrap(tmpFreq)*Linear::wrap(twiddles).conj();
+				} else {
+					Linear::wrap(freq + s*innerSize, innerSize) = Linear::wrap(tmpFreq)*Linear::wrap(twiddles);
+				}
 				break;
 			}
 			case (StepType::middleWithoutFinal): {
-				InnerFFT::fftStrideTime(outerSize, time + s, tmpFreq.data());
-				
+				if (inverse) {
+					InnerFFT::ifftStrideFreq(outerSize, time + s, tmpFreq.data());
+				} else {
+					InnerFFT::fftStrideTime(outerSize, time + s, tmpFreq.data());
+				}
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
+
 				// We have to do the final DFT right here
 				for (size_t i = 0; i < innerSize; ++i) {
-					Complex v = tmpFreq[i]*twiddles[i];
+					Complex v = tmpFreq[i]*(inverse ? std::conj(twiddles[i]) : twiddles[i]);
 					tmpFreq[i] = v;
 					freq[i] += v;
 				}
@@ -255,7 +292,7 @@ private:
 				for (size_t f = 1; f < outerSize; ++f) {
 					Complex dftTwist = dftTwists[(f*s)%outerSize];
 					for (size_t i = 0; i < innerSize; ++i) {
-						freq[i + f*innerSize] += tmpFreq[i]*dftTwist;
+						freq[i + f*innerSize] += tmpFreq[i]*(inverse ? std::conj(dftTwist) : dftTwist);
 					}
 				}
 				break;
@@ -264,13 +301,13 @@ private:
 				finalPass2(freq);
 				break;
 			case StepType::finalOrder3:
-				finalPass3(freq);
+				finalPass3<inverse>(freq);
 				break;
 			case StepType::finalOrder4:
-				finalPass4(freq);
+				finalPass4<inverse>(freq);
 				break;
 			case StepType::finalOrder5:
-				finalPass5(freq);
+				finalPass5<inverse>(freq);
 				break;
 		}
 	}
@@ -283,10 +320,11 @@ private:
 			f1[i] = a - b;
 		}
 	}
+	template<bool inverse>
 	void finalPass3(Complex *f0) {
 		auto *f1 = f0 + innerSize;
 		auto *f2 = f0 + innerSize*2;
-		const Complex tw1{Sample(-0.5), Sample(-std::sqrt(0.75))};
+		const Complex tw1{Sample(-0.5), Sample(-std::sqrt(0.75)*(inverse ? -1 : 1))};
 		for (size_t i = 0; i < innerSize; ++i) {
 			Complex a = f0[i], b = f1[i], c = f2[i];
 			f0[i] = a + b + c;
@@ -294,6 +332,7 @@ private:
 			f2[i] = a + b*std::conj(tw1) + c*tw1;
 		}
 	}
+	template<bool inverse>
 	void finalPass4(Complex *f0) {
 		auto *f1 = f0 + innerSize;
 		auto *f2 = f0 + innerSize*2;
@@ -304,17 +343,18 @@ private:
 			Complex ac0 = a + c, ac1 = a - c;
 			Complex bd0 = b + d, bd1 = b - d;
 			f0[i] = ac0 + bd0;
-			f1[i] = ac1 + bd1*Complex{0, -1};
+			f1[i] = ac1 + bd1*Complex{0, inverse ? 1 : -1};
 			f2[i] = ac0 - bd0;
-			f3[i] = ac1 - bd1*Complex{0, -1};
+			f3[i] = ac1 - bd1*Complex{0, inverse ? 1 : -1};
 		}
 	}
+	template<bool inverse>
 	void finalPass5(Complex *f0) {
 		auto *f1 = f0 + innerSize;
 		auto *f2 = f0 + innerSize*2;
 		auto *f3 = f0 + innerSize*3;
 		auto *f4 = f0 + innerSize*4;
-		const Complex tw1{0.30901699437494745, -0.9510565162951535}, tw2{-0.8090169943749473, -0.5877852522924732};
+		const Complex tw1{0.30901699437494745, -0.9510565162951535*(inverse ? -1 : 1)}, tw2{-0.8090169943749473, -0.5877852522924732*(inverse ? -1 : 1)};
 		for (size_t i = 0; i < innerSize; ++i) {
 			Complex a = f0[i], b = f1[i], c = f2[i], d = f3[i], e = f4[i];
 			f0[i] = a + b + c + d + e;

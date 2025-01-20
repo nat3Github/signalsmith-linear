@@ -169,9 +169,22 @@ struct RunPlot {
 		}
 		
 		template<class Data>
-		void run(Data data, double refTime, Data *maybeRefData) {
+		void run(Data data, double refTime, Data *maybeRefData, double errorLimit=1e-4) {
 			PrepareAndRun obj;
 			obj.prepare(data.size, data.size);
+			obj.run(data);
+			
+			if (maybeRefData) {
+				double error = data.distance(*maybeRefData);
+				if (error > errorLimit) {
+					std::cout << "\nsize = " << data.size << ", error = " << error << "\n";
+					std::cout << "\nReference:\n";
+					maybeRefData->log();
+					std::cout << "\nLinear:\n";
+					data.log();
+					abort();
+				}
+			}
 			
 			if (runPlot.benchmarkSeconds) {
 				double speed = runBenchmark(runPlot.benchmarkSeconds, [&](){

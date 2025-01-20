@@ -306,6 +306,7 @@ namespace expression {
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log, std::log)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log10, std::log10)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sqrt, std::sqrt)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Conj, std::conj)
 #undef SIGNALSMITH_AUDIO_LINEAR_FUNC1
 }
 
@@ -337,6 +338,9 @@ struct Expression : public BaseExpr {
 		return {*this};
 	}
 	Expression<expression::Sqrt<BaseExpr>> sqrt() const {
+		return {*this};
+	}
+	Expression<expression::Conj<BaseExpr>> conj() const {
 		return {*this};
 	}
 };

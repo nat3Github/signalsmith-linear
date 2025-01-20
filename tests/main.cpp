@@ -37,8 +37,8 @@ int main(int argc, char *argv[]) {
 		
 	}
 	if (argc <= 3) {
-		testLinear(maxSize, benchmarkSeconds);
 		testFfts(maxSize, benchmarkSeconds);
+		testLinear(maxSize, benchmarkSeconds);
 	} else {
 		for (int i = 3; i < argc; ++i) {
 			if (!std::strcmp(argv[i], "fft")) {
