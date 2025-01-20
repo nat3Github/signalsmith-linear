@@ -13,8 +13,9 @@ struct SimpleWrapper {
 	}
 	
 	template<class Data>
-	void run(Data &data, int, int) {
-		fft.fft(data.size, data.cpA, data.cpB);
+	void run(Data &data) {
+		auto *time = data.complex(0), *freq = data.complex(1);
+		fft.fft(data.size, time, freq);
 	}
 };
 
@@ -27,8 +28,9 @@ struct Pow2Wrapper {
 	}
 
 	template<class Data>
-	void run(Data& data, int, int) {
-		fft.fft(data.cpA, data.cpB);
+	void run(Data& data) {
+		auto *time = data.complex(0), *freq = data.complex(1);
+		fft.fft(time, freq);
 	}
 };
 
@@ -41,8 +43,9 @@ struct SplitWrapper {
 	}
 
 	template<class Data>
-	void run(Data& data, int, int) {
-		fft.fft(data.cpA, data.cpB);
+	void run(Data& data) {
+		auto *time = data.complex(0), *freq = data.complex(1);
+		fft.fft(time, freq);
 	}
 };
 
@@ -56,8 +59,9 @@ struct SignalsmithFFTWrapper {
 	}
 	
 	template<class Data>
-	void run(Data& data, int, int) {
-		fft.fft(data.cpA, data.cpB);
+	void run(Data& data) {
+		auto *time = data.complex(0), *freq = data.complex(1);
+		fft.fft(time, freq);
 	}
 };
 
@@ -71,8 +75,9 @@ struct SignalsmithDSPWrapper {
 	}
 	
 	template<class Data>
-	void run(Data& data, int, int) {
-		fft.fft(data.cpA, data.cpB);
+	void run(Data& data) {
+		auto *time = data.complex(0), *freq = data.complex(1);
+		fft.fft(time, freq);
 	}
 };
 
@@ -101,10 +106,11 @@ void testFfts(int maxSize, double benchmarkSeconds) {
 	auto dspFloat = plot.runner<SignalsmithDSPWrapper<float>>("DSP library (float)");
 
 	auto runSize = [&](int n, int pow3=0, int pow5=0, int pow7=0){
+		std::cout << "\tn = " << n << "\r" << std::flush;
 		double refTime = 1e-8*n*(std::log2(n) + 1); // heuristic for expected computation time, just to compare different sizes
 
-		RunData<double> dataDouble(n, maxSize, n);
-		RunData<float> dataFloat(n, maxSize, n);
+		RunData<double> dataDouble(n);
+		RunData<float> dataFloat(n);
 
 		RunData<double> *refPtrDouble = nullptr;
 		RunData<float> *refPtrFloat = nullptr;
@@ -114,35 +120,37 @@ void testFfts(int maxSize, double benchmarkSeconds) {
 		if (n < 256) {
 			refPtrDouble = &refDataDouble;
 			refPtrFloat = &refDataFloat;
+			auto *inputDouble = refDataDouble.complex(0);
+			auto *outputDouble = refDataDouble.complex(1);
+			auto *inputFloat = refDataFloat.complex(0);
+			auto *outputFloat = refDataFloat.complex(1);
 			for (int f = 0; f < n; ++f) {
 				std::complex<double> sumD = 0;
 				std::complex<double> sumF = 0;
 				for (int i = 0; i < n; ++i) {
 					auto coeff = std::polar(1.0, -2*M_PI*i*f/n);
-					sumD += coeff*refDataDouble.cvA[i];
-					std::complex<float> vf = refDataFloat.cvA[i];
+					sumD += coeff*inputDouble[i];
+					std::complex<float> vf = inputFloat[i];
 					sumF += coeff*std::complex<double>{vf.real(), vf.imag()};
 				}
-				refDataDouble.cvB[f] = sumD;
-				refDataFloat.cvB[f] = {float(sumF.real()), float(sumF.imag())};
+				outputDouble[f] = sumD;
+				outputFloat[f] = {float(sumF.real()), float(sumF.imag())};
 			}
 		}
 
 		if (pow3 + pow5 + pow7 == 0) {
-			simpleDouble.run(dataDouble, refTime, refPtrDouble, 1, 1);
-			simpleFloat.run(dataFloat, refTime, refPtrFloat, 1, 1);
-			pow2Double.run(dataDouble, refTime, refPtrDouble, 1, 1);
-			pow2Float.run(dataFloat, refTime, refPtrFloat, 1, 1);
-
-			plot.tick(n);
+			simpleDouble.run(dataDouble, refTime, refPtrDouble);
+			simpleFloat.run(dataFloat, refTime, refPtrFloat);
+			pow2Double.run(dataDouble, refTime, refPtrDouble);
+			pow2Float.run(dataFloat, refTime, refPtrFloat);
 		}
 		if (pow5 + pow7 == 0) {
-			dspDouble.run(dataDouble, refTime, refPtrDouble, 1, 1);
-			dspFloat.run(dataFloat, refTime, refPtrFloat, 1, 1);
+			dspDouble.run(dataDouble, refTime, refPtrDouble);
+			dspFloat.run(dataFloat, refTime, refPtrFloat);
 		}
 		if (signalsmith::linear::SplitFFT<double>::fastSizeAbove(n) == size_t(n)) {
-			splitDouble.run(dataDouble, refTime, refPtrDouble, 1, 1);
-			splitFloat.run(dataFloat, refTime, refPtrFloat, 1, 1);
+			splitDouble.run(dataDouble, refTime, refPtrDouble);
+			splitFloat.run(dataFloat, refTime, refPtrFloat);
 		}
 	};
 	for (int n = 1; n <= maxSize; n *= 2) {
@@ -152,5 +160,14 @@ void testFfts(int maxSize, double benchmarkSeconds) {
 		if (n/8) runSize(n*7/8, 1, 1);
 		if (n/16) runSize(n*15/16, 1, 1);
 		runSize(n);
+
+		if (int(std::round(std::log2(n)))%2 == 0) {
+			plot.tick(n, 2);
+		} else {
+			plot.tick(n, "");
+		}
 	}
+	std::cout << "\t                                \r" << std::flush;
+
+	plot.plot.x.range(std::log, 1, maxSize).label("FFT size");
 }

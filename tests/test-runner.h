@@ -145,13 +145,13 @@ struct RunPlot {
 	Plot &plot;
 	signalsmith::plot::Legend &legend;
 	
-	RunPlot(const std::string &name, double benchmarkSeconds=0.05) : name(name), benchmarkSeconds(benchmarkSeconds), plotPtr(new Plot(600, 200)), plot(*plotPtr), legend(plot.legend(0, 1)) {
+	RunPlot(const std::string &name, double benchmarkSeconds=0.05) : name(name), benchmarkSeconds(benchmarkSeconds), plotPtr(new Plot(450, 200)), plot(*plotPtr), legend(plot.legend(1.6, 1)) {
 		std::cout << "\n" << name << "\n";
 		for (size_t i = 0; i < name.size(); ++i) std::cout << "-";
 		std::cout << "\n";
 		plot.x.label(name);
 	}
-	RunPlot(const std::string &name, Plot &plot, double benchmarkSeconds=0.05) : name(name), benchmarkSeconds(benchmarkSeconds), plot(plot), legend(plot.legend(0, 1)) {
+	RunPlot(const std::string &name, Plot &plot, double benchmarkSeconds=0.05) : name(name), benchmarkSeconds(benchmarkSeconds), plot(plot), legend(plot.legend(1.6, 1)) {
 		plot.x.label(name);
 	}
 	~RunPlot() {
@@ -159,6 +159,56 @@ struct RunPlot {
 			plot.y.major(0); // auto-scaled range includes 0
 			plot.y.blankLabels().label("speed"); // values don't matter, only the comparison
 			plot.write(name + ".svg");
+		}
+	}
+	
+	template<class PrepareAndRun>
+	struct Runner {
+		Runner(RunPlot &runPlot, std::string name) : runPlot(runPlot), line(runPlot.plot.line()) {
+			runPlot.legend.add(line, name);
+		}
+		
+		template<class Data>
+		void run(Data data, double refTime, Data *maybeRefData) {
+			PrepareAndRun obj;
+			obj.prepare(data.size, data.size);
+			
+			if (runPlot.benchmarkSeconds) {
+				double speed = runBenchmark(runPlot.benchmarkSeconds, [&](){
+					obj.run(data);
+				});
+				line.add(data.size, speed*refTime);
+			}
+		}
+	private:
+		RunPlot &runPlot;
+		signalsmith::plot::Line2D &line;
+	};
+	
+	template<class PrepareAndRun>
+	Runner<PrepareAndRun> runner(std::string name) {
+		return {*this, name};
+	}
+
+	bool firstTick = true;
+	void tick(int n, int base=0) {
+		std::string nString = std::to_string(n);
+		if (base > 0) {
+			int log = std::round(std::log(n)/std::log(base));
+			int pow = std::round(std::pow(base, log));
+			if (pow == n) {
+				std::string powString = std::to_string(base) + "^" + std::to_string(log);
+				if (powString.size() + 1 < nString.size()) nString = powString;
+			}
+		}
+		tick(n, nString);
+	}
+	void tick(int n, std::string nString) {
+		if (firstTick) {
+			firstTick = false;
+			plot.x.major(n, nString);
+		} else {
+			plot.x.tick(n, nString);
 		}
 	}
 };

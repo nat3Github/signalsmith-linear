@@ -111,7 +111,9 @@ struct Pow2FFT : private ::signalsmith::linear::Linear<Sample> {
 		const Complex *input = time;
 		if (stride != 1) {
 			input = tmpTime.data();
-			Linear::copy(_size, time, stride, tmpTime.data(), 1);
+			for (size_t i = 0; i < _size; ++i) {
+				tmpTime[i] = time[i*stride];
+			}
 		}
 		simpleFFT.fft(_size, input, freq);
 	}
@@ -224,7 +226,10 @@ private:
 				InnerFFT::fftStrideTime(outerSize, time, freq);
 				// We're doing the DFT as part of these passes, so duplicate this one
 				for (size_t s = 1; s < outerSize; ++s) {
-					Linear::copy(int(innerSize), freq, freq + s*innerSize);
+					auto *offsetFreq = freq + s*innerSize;
+					for (size_t i = 0; i < innerSize; ++i) {
+						offsetFreq[i] = freq[i];
+					}
 				}
 				break;
 			}
@@ -233,7 +238,7 @@ private:
 				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We'll do the final DFT in-place, as extra passes
-				Linear::mul(int(innerSize), tmpFreq.data(), twiddles, freq + s*innerSize);
+				Linear::wrap(freq + s*innerSize, innerSize) = Linear::wrap(tmpFreq)*Linear::wrap(twiddles);
 				break;
 			}
 			case (StepType::middleWithoutFinal): {

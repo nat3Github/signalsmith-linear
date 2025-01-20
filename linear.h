@@ -290,8 +290,17 @@ namespace expression {
 		A real = a.real(), imag = a.imag();
 		return real*real + imag*imag;
 	}
+	template<class A>
+	A fastAbs(const A &a) {
+		return std::abs(a);
+	}
+	template<class A>
+	A fastAbs(const std::complex<A> &a) {
+		A real = a.real(), imag = a.imag();
+		return std::sqrt(real*real + imag*imag);
+	}
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Mod1, mod1)
-	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Abs, std::abs)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Abs, fastAbs)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Norm, fastNorm)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp, std::exp)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log, std::log)
@@ -351,13 +360,13 @@ struct Linear {
 	void reserve(size_t) {}
 
 	// Wrap a pointer as an expression
-	Expression<expression::ReadableReal<V>> wrap(RealPointer<V> pointer) {
+	Expression<expression::ReadableReal<V>> wrap(ConstRealPointer<V> pointer) {
 		return {pointer};
 	}
-	Expression<expression::ReadableComplex<V>> wrap(ComplexPointer<V> pointer) {
+	Expression<expression::ReadableComplex<V>> wrap(ConstComplexPointer<V> pointer) {
 		return {pointer};
 	}
-	Expression<expression::ReadableSplit<V>> wrap(SplitPointer<V> pointer) {
+	Expression<expression::ReadableSplit<V>> wrap(ConstSplitPointer<V> pointer) {
 		return {pointer};
 	}
 
@@ -371,7 +380,30 @@ struct Linear {
 	WritableExpression<expression::WritableSplit<V>> wrap(SplitPointer<V> pointer, size_t size) {
 		return {*this, pointer, size};
 	}
-	
+
+	WritableExpression<expression::WritableReal<V>> wrap(std::vector<V> &vector) {
+		return {*this, vector.data(), vector.size()};
+	}
+	WritableExpression<expression::WritableComplex<V>> wrap(std::vector<std::complex<V>> &vector) {
+		return {*this, vector.data(), vector.size()};
+	}
+	WritableExpression<expression::WritableSplit<V>> wrap(std::vector<V> &real, std::vector<V> &imag) {
+		SplitPointer<V> pointer{real.data(), imag.data()};
+		size_t size = std::min<size_t>(real.size(), imag.size());
+		return {*this, pointer, size};
+	}
+
+	Expression<expression::WritableReal<V>> wrap(const std::vector<V> &vector) {
+		return {vector.data()};
+	}
+	Expression<expression::WritableComplex<V>> wrap(const std::vector<std::complex<V>> &vector) {
+		return {vector.data()};
+	}
+	Expression<expression::WritableSplit<V>> wrap(const std::vector<V> &real, const std::vector<V> &imag) {
+		ConstSplitPointer<V> pointer{real.data(), imag.data()};
+		return {pointer};
+	}
+
 	template<class ...Args>
 	auto operator()(Args &&...args) -> decltype(wrap(std::forward<Args>(args)...)) {
 		return wrap(std::forward<Args>(args)...);
