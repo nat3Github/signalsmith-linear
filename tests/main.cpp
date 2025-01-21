@@ -1,8 +1,10 @@
+#include <iostream>
+#define LOG_EXPR(expr) std::cout << #expr << " = " << (expr) << std::endl;
+
 #include "./test-linear.h"
 #include "./test-ffts.h"
 
 #include <cstdlib>
-#include <iostream>
 
 int main(int argc, char *argv[]) {
 #ifdef SIGNALSMITH_USE_ACCELERATE

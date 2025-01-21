@@ -3,12 +3,9 @@
 #include "./stopwatch.h"
 #include "plot/plot.h"
 
-#include <iostream>
 #include <complex>
 #include <vector>
 #include <random>
-
-#define LOG_EXPR(expr) std::cout << #expr << " = " << (expr) << std::endl;
 
 template<typename Sample>
 struct RunData {

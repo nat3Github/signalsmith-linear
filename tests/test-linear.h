@@ -12,7 +12,7 @@ struct OpVoidArBr {
 	void reference(RunData<V> &data) const {
 		auto a = data.real(0), b = data.real(1);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.op(a[i], b[i]);
+			op.opRef(a[i], b[i]);
 		}
 	}
 
@@ -29,7 +29,7 @@ struct OpVoidArBrp {
 	void reference(RunData<V> &data) const {
 		auto a = data.real(0), b = data.positive(0);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.op(a[i], b[i]);
+			op.opRef(a[i], b[i]);
 		}
 	}
 
@@ -47,7 +47,7 @@ struct OpVoidArBc {
 		auto a = data.real(0);
 		auto b = data.complex(0);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.op(a[i], b[i]);
+			op.opRef(a[i], b[i]);
 		}
 	}
 
@@ -65,7 +65,7 @@ struct OpVoidAcBc {
 		auto a = data.complex(0);
 		auto b = data.complex(1);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.op(a[i], b[i]);
+			op.opRef(a[i], b[i]);
 		}
 	}
 
@@ -82,7 +82,7 @@ struct OpVoidArBrCr {
 	void reference(RunData<V> &data) const {
 		auto a = data.real(0), b = data.real(1), c = data.real(2);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.op(a[i], b[i], c[i]);
+			op.opRef(a[i], b[i], c[i]);
 		}
 	}
 
@@ -141,11 +141,11 @@ struct TestLinear {
 	signalsmith::plot::Legend *legend;
 	
 	TestLinear(int maxSize, double benchmarkSeconds) : maxSize(maxSize), benchmarkSeconds(benchmarkSeconds) {
-		addConfig(0, 0, "float (ref)");
 		addConfig(1, 0, "float (Linear)");
-		addConfig(0, 1, "double (ref)");
+		addConfig(0, 0, "float (ref)");
 		addConfig(1, 1, "double (Linear)");
-		legend = &configs[1].plot.legend(2, 1);
+		addConfig(0, 1, "double (ref)");
+		legend = &configs[0].plot.legend(2, 1);
 		tinyFigure.style.titlePadding = 0;
 	}
 	TestLinear(const TestLinear &other) = delete;
@@ -242,25 +242,25 @@ struct TestLinear {
 			{
 				RunData<float> copy = dataFloat;
 				opLines[0].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
-					opWithArgs.reference(copy);
+					opWithArgs.linear(linearFloat, copy);
 				}));
 			}
 			{
 				RunData<float> copy = dataFloat;
 				opLines[1].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
-					opWithArgs.linear(linearFloat, copy);
-				}));
-			}
-			{
-				RunData<double> copy = dataDouble;
-				opLines[2].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
 					opWithArgs.reference(copy);
 				}));
 			}
 			{
 				RunData<double> copy = dataDouble;
-				opLines[3].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
+				opLines[2].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
 					opWithArgs.linear(linearDouble, copy);
+				}));
+			}
+			{
+				RunData<double> copy = dataDouble;
+				opLines[3].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
+					opWithArgs.reference(copy);
 				}));
 			}
 		};
@@ -277,103 +277,52 @@ struct TestLinear {
 	}
 };
 
-#define TEST_EXPR2(Name, expr) \
+#define TEST_EXPR2(Name, refExpr, expr) \
 struct Name { \
 	const char *name = #expr; \
+	template<class A, class B> \
+	void opRef(A &a, B &b) const { \
+		refExpr; \
+	} \
 	template<class A, class B> \
 	void op(A &&a, B &&b) const { \
 		expr; \
 	} \
 };
-#define TEST_EXPR3(Name, expr) \
+#define TEST_EXPR3(Name, refExpr, expr) \
 struct Name { \
 	const char *name = #expr; \
+	template<class A, class B, class C> \
+	void opRef(A &a, B &b, C &c) const { \
+		refExpr; \
+	} \
 	template<class A, class B, class C> \
 	void op(A &&a, B &&b, C &&c) const { \
 		expr; \
 	} \
 };
-TEST_EXPR2(Assign, a = b);
-TEST_EXPR3(Add, a = b + c);
-TEST_EXPR3(Sub, a = b - c);
-TEST_EXPR3(Mul, a = b*c);
-TEST_EXPR3(Div, a = b/c);
+TEST_EXPR2(Assign, a = b, a = b);
+TEST_EXPR3(Add, a = b + c, a = b + c);
+TEST_EXPR3(Sub, a = b - c, a = b - c);
+TEST_EXPR3(Mul, a = b*c, a = b*c);
+TEST_EXPR3(Div, a = b/c, a = b/c);
 
-#define TEST_REAL_METHOD0(Name, scalarExpr, linearExpr) \
-struct Name { \
-	const char *name = #linearExpr; \
-	void op(float &a, float &b) const { \
-		scalarExpr; \
-	} \
-	void op(double &a, double &b) const { \
-		scalarExpr; \
-	} \
-	template<class A, class B> \
-	void op(A &&a, B &&b) const { \
-		linearExpr; \
-	} \
-};
-#define TEST_MIXED_METHOD0(Name, scalarExpr, linearExpr) \
-struct Name { \
-	const char *name = #linearExpr; \
-	void op(float &a, float &b) const { \
-		scalarExpr; \
-	} \
-	void op(double &a, double &b) const { \
-		scalarExpr; \
-	} \
-	void op(std::complex<float> &a, std::complex<float> &b) const { \
-		scalarExpr; \
-	} \
-	void op(std::complex<double> &a, std::complex<double> &b) const { \
-		scalarExpr; \
-	} \
-	void op(float &a, std::complex<float> &b) const { \
-		scalarExpr; \
-	} \
-	void op(double &a, std::complex<double> &b) const { \
-		scalarExpr; \
-	} \
-	void op(std::complex<float> &a, float &b) const { \
-		scalarExpr; \
-	} \
-	void op(std::complex<double> &a, double &b) const { \
-		scalarExpr; \
-	} \
-	template<class A, class B> \
-	void op(A &&a, B &&b) const { \
-		linearExpr; \
-	} \
-};
-#define TEST_COMPLEX_METHOD0(Name, scalarExpr, linearExpr) \
-struct Name { \
-	const char *name = #linearExpr; \
-	void op(std::complex<float> &a, std::complex<float> &b) const { \
-		scalarExpr; \
-	} \
-	void op(std::complex<double> &a, std::complex<double> &b) const { \
-		scalarExpr; \
-	} \
-	void op(std::complex<float> &a, float &b) const { \
-		scalarExpr; \
-	} \
-	void op(std::complex<double> &a, double &b) const { \
-		scalarExpr; \
-	} \
-	template<class A, class B> \
-	void op(A &&a, B &&b) const { \
-		linearExpr; \
-	} \
-};
-TEST_REAL_METHOD0(Mod1, a = b - std::floor(b), a = b.mod1());
-TEST_MIXED_METHOD0(Abs, a = std::abs(b), a = b.abs());
-TEST_MIXED_METHOD0(Norm, a = std::norm(b), a = b.norm());
-TEST_REAL_METHOD0(Exp, a = std::exp(b), a = b.exp());
-TEST_REAL_METHOD0(Log, a = std::log(b), a = b.log());
-TEST_REAL_METHOD0(Log10, a = std::log10(b), a = b.log10());
-TEST_REAL_METHOD0(Sqrt, a = std::sqrt(b), a = b.sqrt());
-TEST_MIXED_METHOD0(SqrtNorm, a = std::sqrt(std::norm(b)), a = b.norm().sqrt());
-TEST_COMPLEX_METHOD0(Conj, a = std::conj(b), a = b.conj());
+TEST_EXPR2(Abs, a = std::abs(b), a = b.abs());
+TEST_EXPR2(Norm, a = std::norm(b), a = b.norm());
+TEST_EXPR2(Exp, a = std::exp(b), a = b.exp());
+TEST_EXPR2(Exp2, a = std::exp2(b), a = b.exp2());
+TEST_EXPR2(Log, a = std::log(b), a = b.log());
+TEST_EXPR2(Log2, a = std::log2(b), a = b.log2());
+TEST_EXPR2(Log10, a = std::log10(b), a = b.log10());
+TEST_EXPR2(Sqrt, a = std::sqrt(b), a = b.sqrt());
+TEST_EXPR2(Cbrt, a = std::cbrt(b), a = b.cbrt());
+TEST_EXPR2(SqrtNorm, a = std::sqrt(std::norm(b)), a = b.norm().sqrt());
+TEST_EXPR2(Conj, a = std::conj(b), a = b.conj());
+TEST_EXPR2(Real, a = std::real(b), a = b.real());
+TEST_EXPR2(Imag, a = std::imag(b), a = b.imag());
+TEST_EXPR2(Arg, a = std::arg(b), a = b.arg());
+TEST_EXPR2(Floor, a = std::floor(b), a = b.floor());
+TEST_EXPR2(MinusFloor, a = b - std::floor(b), a = b - b.floor());
 
 void testLinear(int maxSize, double benchmarkSeconds) {
 	std::cout << "\nExpressions\n-----------\n";
@@ -383,14 +332,21 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 	test.addOp<OpVoidArBrCr<Sub>>("SubR");
 	test.addOp<OpVoidArBrCr<Mul>>("MulR");
 	test.addOp<OpVoidArBrCr<Div>>("DivR");
-	test.addOp<OpVoidArBr<Mod1>>("Mod1");
 	test.addOp<OpVoidArBr<Abs>>("AbsR");
 	test.addOp<OpVoidArBc<Abs>>("AbsC", "for complex b");
 	test.addOp<OpVoidArBc<Norm>>("NormC");
 	test.addOp<OpVoidArBc<SqrtNorm>>("SqrtNormC");
 	test.addOp<OpVoidAcBc<Conj>>("ConjC");
+	test.addOp<OpVoidArBc<Real>>("Real");
+	test.addOp<OpVoidArBc<Imag>>("Imag");
+	test.addOp<OpVoidArBc<Arg>>("Arg");
 	test.addOp<OpVoidArBr<Exp>>("ExpR");
+	test.addOp<OpVoidArBr<Exp2>>("Exp2R");
 	test.addOp<OpVoidArBrp<Log>>("LogR");
+	test.addOp<OpVoidArBrp<Log2>>("Log2R");
 	test.addOp<OpVoidArBrp<Log10>>("Log10R");
 	test.addOp<OpVoidArBrp<Sqrt>>("Sqrt");
+	test.addOp<OpVoidArBr<Cbrt>>("Cbrt");
+	test.addOp<OpVoidArBr<Floor>>("Floor");
+	test.addOp<OpVoidArBr<MinusFloor>>("MinusFloor");
 }
