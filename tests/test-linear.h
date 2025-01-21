@@ -205,12 +205,12 @@ struct TestLinear {
 		}
 		legend->add(opLines[0].main, opName);
 		
-		signalsmith::linear::Linear<float> linearFloat;
-		signalsmith::linear::Linear<double> linearDouble;
+		signalsmith::linear::Linear linearFloat;
+		signalsmith::linear::Linear linearDouble;
 		auto runSize = [&](int n){
 			std::cout << "\tn = " << n << "\r" << std::flush;
-			linearFloat.reserve(n);
-			linearDouble.reserve(n);
+			linearFloat.reserve<float>(n);
+			linearDouble.reserve<double>(n);
 
 			RunData<double> dataDouble(n);
 			RunData<float> dataFloat(n);

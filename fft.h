@@ -89,9 +89,9 @@ private:
 
 /// A power-of-2 only FFT, specialised with platform-specific fast implementations where available
 template<typename Sample>
-struct Pow2FFT : private ::signalsmith::linear::Linear<Sample> {
+struct Pow2FFT : private ::signalsmith::linear::Linear {
 	using Complex = std::complex<Sample>;
-	using Linear = ::signalsmith::linear::Linear<Sample>;
+	using Linear = ::signalsmith::linear::Linear;
 	
 	Pow2FFT(size_t size=0) {
 		resize(size);

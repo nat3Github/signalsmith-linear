@@ -5,38 +5,17 @@
 #include <complex>
 #include <array>
 
-#define SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE 8
-#define SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(value, indexName, ...) \
-	{ \
-		size_t indexName = value; \
-		__VA_ARGS__; \
-	}
-#define SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH(indexName, ...) \
-	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(0, indexName, __VA_ARGS__) \
-	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(1, indexName, __VA_ARGS__) \
-	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(2, indexName, __VA_ARGS__) \
-	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(3, indexName, __VA_ARGS__) \
-	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(4, indexName, __VA_ARGS__) \
-	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(5, indexName, __VA_ARGS__) \
-	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(6, indexName, __VA_ARGS__) \
-	SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP(7, indexName, __VA_ARGS__)
-
 namespace signalsmith { namespace linear {
 
-// Unsized pointers
 template<typename V>
 using ConstRealPointer = const V *;
 template<typename V>
 using RealPointer = V *;
-template<typename V>
-using RealChunk = std::array<V, SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE>;
 
 template<typename V>
 using ConstComplexPointer = const std::complex<V> *;
 template<typename V>
 using ComplexPointer = std::complex<V> *;
-template<typename V>
-using ComplexChunk = std::array<std::complex<V>, SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE>;
 
 template<typename V>
 struct ConstSplitPointer {
@@ -51,40 +30,14 @@ struct SplitPointer {
 		return {real, imag};
 	}
 };
-template<typename V>
-struct SplitChunk {
-	RealChunk<V> real, imag;
-};
 
-#define SIGNALSMITH_LINEAR_SIZED_TYPE(Name) \
-	template<typename V> \
-	struct Const##Name { \
-		Const##Name(Const##Name##Pointer<V> pointer, size_t size) : pointer(pointer), size(size) {} \
-		Const##Name##Pointer<V> pointer; \
-		const size_t size; \
-	}; \
-	template<typename V> \
-	struct Name { \
-		Name(Name##Pointer<V> pointer, size_t size) : pointer(pointer), size(size) {} \
-		operator Const##Name<V>() const { \
-			return {pointer, size}; \
-		} \
-		Name##Pointer<V> pointer; \
-		const size_t size; \
-	};
-
-SIGNALSMITH_LINEAR_SIZED_TYPE(Real)
-SIGNALSMITH_LINEAR_SIZED_TYPE(Complex)
-SIGNALSMITH_LINEAR_SIZED_TYPE(Split)
-#undef SIGNALSMITH_LINEAR_SIZED_TYPE
-
-template<typename V>
-struct Linear;
+template<bool=true>
+struct LinearImpl;
+using Linear = LinearImpl<true>;
 
 // Everything we deal with is actually one of these
 template<class BaseExpr>
 struct Expression;
-// A subclass with = methods
 template<class BaseExpr>
 struct WritableExpression;
 
@@ -146,73 +99,6 @@ namespace expression {
 		}
 	};
 	
-	template<typename V>
-	struct WritableReal {
-		EXPRESSION_NAME("WritableReal");
-		Linear<V> &linear;
-		RealPointer<V> pointer;
-		size_t size;
-		WritableReal(Linear<V> &linear, RealPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
-		
-		template<class Expr>
-		WritableReal & operator=(Expression<Expr> expr) {
-			linear.fill(pointer, expr, size);
-			return *this;
-		}
-
-		V get(std::ptrdiff_t i) const {
-			return pointer[i];
-		}
-		template<class L>
-		WritableReal maybeCache(L &&, size_t) const {
-			return *this;
-		}
-	};
-	template<typename V>
-	struct WritableComplex {
-		EXPRESSION_NAME("WritableComplex");
-		Linear<V> &linear;
-		ComplexPointer<V> pointer;
-		size_t size;
-		WritableComplex(Linear<V> &linear, ComplexPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
-		
-		template<class Expr>
-		WritableComplex & operator=(Expression<Expr> expr) {
-			linear.fill(pointer, expr, size);
-			return *this;
-		}
-
-		std::complex<V> get(std::ptrdiff_t i) const {
-			return pointer[i];
-		}
-		template<class L>
-		WritableComplex maybeCache(L &&, size_t) const {
-			return *this;
-		}
-	};
-	template<typename V>
-	struct WritableSplit {
-		EXPRESSION_NAME("WritableSplit");
-		Linear<V> &linear;
-		SplitPointer<V> pointer;
-		size_t size;
-		WritableSplit(Linear<V> &linear, SplitPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
-		
-		template<class Expr>
-		WritableSplit & operator=(Expression<Expr> expr) {
-			linear.fill(pointer, expr, size);
-			return *this;
-		}
-
-		std::complex<V> get(std::ptrdiff_t i) const {
-			return {pointer.real[i], pointer.imag[i]};
-		}
-		template<class L>
-		WritableSplit maybeCache(L &&, size_t) const {
-			return *this;
-		}
-	};
-
 	// + - * / % ^ & | ~ ! = < > += -= *= /= %= ^= &= |= << >> >>= <<= == != <= >= <=>(since C++20) && || ++ -- , ->* -> ( ) [ ]
 /*
 #define SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Name, OP) \
@@ -249,10 +135,12 @@ namespace expression {
 			return {l.maybeCache(a, size), l.maybeCache(b, size)}; \
 		}\
 	}; \
-	template<class A, class B> \
-	Expression<Name<A, B>> operator OP(const Expression<A> &a, const Expression<B> &b) { \
-		return {a, b}; \
-	}
+} /*exit expression:: namespace */ \
+template<class A, class B> \
+Expression<expression::Name<A, B>> operator OP(const Expression<A> &a, const Expression<B> &b) { \
+	return {a, b}; \
+} \
+namespace expression {
 	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Add, +)
 	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Sub, -)
 	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Mul, *)
@@ -273,15 +161,7 @@ namespace expression {
 			return {l.maybeCache(a, size)}; \
 		}\
 	};
-	template<class A>
-	A fastNorm(const A &a) {
-		return a*a;
-	}
-	template<class A>
-	A fastNorm(const std::complex<A> &a) {
-		A real = a.real(), imag = a.imag();
-		return real*real + imag*imag;
-	}
+	
 	template<class A>
 	A fastAbs(const A &a) {
 		return std::abs(a);
@@ -291,7 +171,18 @@ namespace expression {
 		return std::hypot(a.real(), a.imag());
 	}
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Abs, fastAbs)
+	
+	template<class A>
+	A fastNorm(const A &a) {
+		return a*a;
+	}
+	template<class A>
+	A fastNorm(const std::complex<A> &a) {
+		A real = a.real(), imag = a.imag();
+		return real*real + imag*imag;
+	}
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Norm, std::norm)
+
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp, std::exp)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp2, std::exp2)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log, std::log)
@@ -362,60 +253,153 @@ struct Expression : public BaseExpr {
 template<class BaseExpr>
 struct WritableExpression : public Expression<BaseExpr> {
 	using Expression<BaseExpr>::Expression;
-	
+
 	template<class Expr>
-	WritableExpression & operator=(Expr &&expr) {
+	WritableExpression & operator=(const Expr &expr) {
+		BaseExpr::operator=(expr);
+		return *this;
+	}
+
+	template<class Expr>
+	WritableExpression & operator=(const WritableExpression<Expr> &expr) {
+		BaseExpr::operator=(expr);
+		return *this;
+	}
+
+	WritableExpression & operator=(const WritableExpression &expr) {
 		BaseExpr::operator=(expr);
 		return *this;
 	}
 };
 
-template<typename V>
+template<bool useLinear=true>
 struct LinearImplBase {
+	using Linear = LinearImpl<useLinear>;
+
+	template<class V>
 	void reserve(size_t) {}
 
+	template<typename V>
+	struct WritableReal {
+		EXPRESSION_NAME("WritableReal");
+		Linear &linear;
+		RealPointer<V> pointer;
+		size_t size;
+		WritableReal(Linear &linear, RealPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
+		
+		template<class Expr>
+		WritableReal & operator=(Expression<Expr> expr) {
+			linear.fill(pointer, expr, size);
+			return *this;
+		}
+
+		V get(std::ptrdiff_t i) const {
+			return pointer[i];
+		}
+		template<class L>
+		expression::ReadableReal<V> maybeCache(L &&, size_t) const {
+			return {pointer};
+		}
+	};
+	template<typename V>
+	struct WritableComplex {
+		EXPRESSION_NAME("WritableComplex");
+		Linear &linear;
+		ComplexPointer<V> pointer;
+		size_t size;
+		WritableComplex(Linear &linear, ComplexPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
+		
+		template<class Expr>
+		WritableComplex & operator=(Expression<Expr> expr) {
+			linear.fill(pointer, expr, size);
+			return *this;
+		}
+
+		std::complex<V> get(std::ptrdiff_t i) const {
+			return pointer[i];
+		}
+		template<class L>
+		expression::ReadableComplex<V> maybeCache(L &&, size_t) const {
+			return {pointer};
+		}
+	};
+	template<typename V>
+	struct WritableSplit {
+		EXPRESSION_NAME("WritableSplit");
+		Linear &linear;
+		SplitPointer<V> pointer;
+		size_t size;
+		WritableSplit(Linear &linear, SplitPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
+		
+		template<class Expr>
+		WritableSplit & operator=(Expression<Expr> expr) {
+			linear.fill(pointer, expr, size);
+			return *this;
+		}
+
+		std::complex<V> get(std::ptrdiff_t i) const {
+			return {pointer.real[i], pointer.imag[i]};
+		}
+		template<class L>
+		expression::ReadableSplit<V> maybeCache(L &&, size_t) const {
+			return {pointer};
+		}
+	};
+	
 	// Wrap a pointer as an expression
+	template<typename V>
 	Expression<expression::ReadableReal<V>> wrap(ConstRealPointer<V> pointer) {
 		return {pointer};
 	}
+	template<typename V>
 	Expression<expression::ReadableComplex<V>> wrap(ConstComplexPointer<V> pointer) {
 		return {pointer};
 	}
+	template<typename V>
 	Expression<expression::ReadableSplit<V>> wrap(ConstSplitPointer<V> pointer) {
 		return {pointer};
 	}
 
 	// TODO: instead of assignment living in the Writable***, have it in WritableExpression only, so that it still looks like a Readable*** for fill/simplify
 	// When a length is supplied, make it writable
-	WritableExpression<expression::WritableReal<V>> wrap(RealPointer<V> pointer, size_t size) {
+	template<typename V>
+	WritableExpression<WritableReal<V>> wrap(RealPointer<V> pointer, size_t size) {
 		return {self(), pointer, size};
 	}
-	WritableExpression<expression::WritableComplex<V>> wrap(ComplexPointer<V> pointer, size_t size) {
+	template<typename V>
+	WritableExpression<WritableComplex<V>> wrap(ComplexPointer<V> pointer, size_t size) {
 		return {self(), pointer, size};
 	}
-	WritableExpression<expression::WritableSplit<V>> wrap(SplitPointer<V> pointer, size_t size) {
+	template<typename V>
+	WritableExpression<WritableSplit<V>> wrap(SplitPointer<V> pointer, size_t size) {
 		return {self(), pointer, size};
 	}
 
-	WritableExpression<expression::WritableReal<V>> wrap(std::vector<V> &vector) {
+	template<typename V>
+	WritableExpression<WritableReal<V>> wrap(std::vector<V> &vector) {
 		return {self(), vector.data(), vector.size()};
 	}
-	WritableExpression<expression::WritableComplex<V>> wrap(std::vector<std::complex<V>> &vector) {
+	template<typename V>
+	WritableExpression<WritableComplex<V>> wrap(std::vector<std::complex<V>> &vector) {
 		return {self(), vector.data(), vector.size()};
 	}
-	WritableExpression<expression::WritableSplit<V>> wrap(std::vector<V> &real, std::vector<V> &imag) {
+	template<typename V>
+	WritableExpression<WritableSplit<V>> wrap(std::vector<V> &real, std::vector<V> &imag) {
 		SplitPointer<V> pointer{real.data(), imag.data()};
 		size_t size = std::min<size_t>(real.size(), imag.size());
 		return {self(), pointer, size};
 	}
 
-	Expression<expression::WritableReal<V>> wrap(const std::vector<V> &vector) {
+	template<typename V>
+	Expression<expression::ReadableReal<V>> wrap(const std::vector<V> &vector) {
 		return {vector.data()};
 	}
-	Expression<expression::WritableComplex<V>> wrap(const std::vector<std::complex<V>> &vector) {
+	template<typename V>
+	Expression<expression::ReadableComplex<V>> wrap(const std::vector<std::complex<V>> &vector) {
 		return {vector.data()};
 	}
-	Expression<expression::WritableSplit<V>> wrap(const std::vector<V> &real, const std::vector<V> &imag) {
+	template<typename V>
+	Expression<expression::ReadableSplit<V>> wrap(const std::vector<V> &real, const std::vector<V> &imag) {
 		ConstSplitPointer<V> pointer{real.data(), imag.data()};
 		return {pointer};
 	}
@@ -427,8 +411,8 @@ struct LinearImplBase {
 
 	// If there are fast ways to compute specific expressions, this lets us store that result in temporary space, and then return a pointer expression
 	template<class Expr>
-	Expr maybeCache(const Expr &expr, size_t size) {
-		return expr.maybeCache(self(), size);
+	auto maybeCache(const Expr &expr, size_t size) -> decltype(expr.maybeCache(*this, size)) {
+		return expr.maybeCache(*this, size);
 	}
 
 	template<class Pointer, class Expr>
@@ -446,28 +430,30 @@ struct LinearImplBase {
 	};
 
 protected:
-	LinearImplBase(Linear<V> *linearThis) {
+	LinearImplBase(Linear *linearThis) {
 		assert((LinearImplBase *)linearThis == this);
 	}
-	Linear<V> & self() {
-		return *(Linear<V> *)this;
+
+	Linear & self() {
+		return *(Linear *)this;
 	}
 };
 
-template<typename V>
-struct Linear : public LinearImplBase<V> {
-	Linear() : LinearImplBase<V>(this) {}
+// Fallback implementation - this should be specialised (with useLinear=true) with faster methods where available
+template<bool useLinear>
+struct LinearImpl : public LinearImplBase<useLinear> {
+	LinearImpl() : LinearImplBase<useLinear>(this) {}
 
-	// An example of a simplification.  This is only called when being evaluated, so it could write to temporary storage and return a Readable??? expression.
-	using LinearImplBase<V>::maybeCache;
+	// An example of a simplification.  This is only called when being evaluated, so it could write to temporary storage and return a Readable??? expression.  Commenting this example out should make the `.fill()` below fail to compile.
+	using LinearImplBase<useLinear>::maybeCache;
 	template<class Expr>
 	expression::Abs<Expr> maybeCache(const expression::Sqrt<expression::Norm<Expr>> &expr, size_t) {
 		return {expr.a.a};
 	}
-	
+
 	// If the simplification is a better way to write values, then override .fill() for the specific pointer/expression
-	using LinearImplBase<V>::fill;
-	template<class Expr>
+	using LinearImplBase<useLinear>::fill;
+	template<typename V, class Expr>
 	void fill(RealPointer<V> pointer, expression::Sqrt<expression::Norm<Expr>> expr, size_t size) {
 		auto replacedExpr = maybeCache(expr, size);
 		checkSimplificationWorked(replacedExpr);
@@ -482,7 +468,6 @@ private:
 	template<class Expr>
 	void checkSimplificationWorked(expression::Sqrt<expression::Norm<Expr>> expr) = delete;
 };
-
 
 }}; // namespace
 
