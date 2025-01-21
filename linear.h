@@ -4,6 +4,7 @@
 #include <cmath>
 #include <complex>
 #include <array>
+#include <type_traits>
 
 namespace signalsmith { namespace linear {
 
@@ -439,6 +440,16 @@ protected:
 	}
 };
 
+// SFINAE template for checking that an expression naturally returns a particular item type
+template<class InputExpr, typename Item, class OutputExpr>
+using ItemType = typename std::enable_if<
+	std::is_same<
+		typename std::decay<decltype(std::declval<InputExpr>().get(0))>::type,
+		Item
+	>::value,
+	OutputExpr
+>::type;
+
 // Fallback implementation - this should be specialised (with useLinear=true) with faster methods where available
 template<bool useLinear>
 struct LinearImpl : public LinearImplBase<useLinear> {
@@ -446,12 +457,18 @@ struct LinearImpl : public LinearImplBase<useLinear> {
 
 	// An example of a simplification.  This is only called when being evaluated, so it could write to temporary storage and return a Readable??? expression.  Commenting this example out should make the `.fill()` below fail to compile.
 	using LinearImplBase<useLinear>::maybeCache;
+
 	template<class Expr>
-	expression::Abs<Expr> maybeCache(const expression::Sqrt<expression::Norm<Expr>> &expr, size_t) {
+	ItemType<Expr, std::complex<float>, expression::Abs<Expr>> maybeCache(const expression::Sqrt<expression::Norm<Expr>> &expr, size_t) {
 		return {expr.a.a};
 	}
 
-	// If the simplification is a better way to write values, then override .fill() for the specific pointer/expression
+	template<class Expr>
+	ItemType<Expr, std::complex<double>, expression::Abs<Expr>> maybeCache(const expression::Sqrt<expression::Norm<Expr>> &expr, size_t) {
+		return {expr.a.a};
+	}
+
+	// If the simplification is a better way to write values, then override .fill() for the specific pointer/expression.  Since `.maybeCache()` should only be called from `.fill()`, this still works even if `.maybeCache()` replaces the same pattern.
 	using LinearImplBase<useLinear>::fill;
 	template<typename V, class Expr>
 	void fill(RealPointer<V> pointer, expression::Sqrt<expression::Norm<Expr>> expr, size_t size) {
