@@ -5,6 +5,7 @@
 #include <complex>
 #include <array>
 #include <type_traits>
+#include <cassert>
 
 namespace signalsmith { namespace linear {
 
@@ -65,7 +66,7 @@ namespace expression {
 			return pointer[i];
 		}
 		template<class L>
-		ReadableReal maybeCache(L &&, size_t) const {
+		ReadableReal maybeCache(L &, size_t) const {
 			return *this;
 		}
 	};
@@ -95,7 +96,7 @@ namespace expression {
 			return {pointer.real[i], pointer.imag[i]};
 		}
 		template<class L>
-		ReadableSplit maybeCache(L &&, size_t) const {
+		ReadableSplit maybeCache(L &, size_t) const {
 			return *this;
 		}
 	};
@@ -125,20 +126,20 @@ namespace expression {
 	template<class A, class B> \
 	struct Name { \
 		EXPRESSION_NAME((#Name "<") + A::name() + "," + B::name() + ">"); \
-		const A a; \
-		const B b; \
+		A a; \
+		B b; \
 		Name(const A &a, const B &b) : a(a), b(b) {} \
-		auto get(std::ptrdiff_t i) const -> decltype(a.get(i) OP b.get(i)) { \
+		auto get(std::ptrdiff_t i) const -> decltype(a.get(i) OP b.get(i)) const { \
 			return a.get(i) OP b.get(i); \
 		} \
 		template<class L> \
-		auto maybeCache(L &&l, size_t size) const -> Name<decltype(l.maybeCache(a, size)),decltype(l.maybeCache(b, size))> { \
+		auto maybeCache(L &l, size_t size) const -> const Name<decltype(l.maybeCache(a, size)),decltype(l.maybeCache(b, size))> { \
 			return {l.maybeCache(a, size), l.maybeCache(b, size)}; \
 		}\
 	}; \
 } /*exit expression:: namespace */ \
 template<class A, class B> \
-Expression<expression::Name<A, B>> operator OP(const Expression<A> &a, const Expression<B> &b) { \
+const Expression<expression::Name<A, B>> operator OP(const Expression<A> &a, const Expression<B> &b) { \
 	return {a, b}; \
 } \
 namespace expression {
@@ -152,13 +153,13 @@ namespace expression {
 	template<class A> \
 	struct Name { \
 		EXPRESSION_NAME((#Name "<") + A::name() + ">"); \
-		const A a; \
+		A a; \
 		Name(const A &a) : a(a) {} \
 		auto get(std::ptrdiff_t i) const -> decltype(func(a.get(i))) { \
 			return func(a.get(i)); \
 		} \
 		template<class L> \
-		auto maybeCache(L &&l, size_t size) const -> Name<decltype(l.maybeCache(a, size))> { \
+		auto maybeCache(L &l, size_t size) const -> const Name<decltype(l.maybeCache(a, size))> { \
 			return {l.maybeCache(a, size)}; \
 		}\
 	};
@@ -202,52 +203,55 @@ namespace expression {
 template<class BaseExpr>
 struct Expression : public BaseExpr {
 	template<class ...Args>
-	Expression(Args &&...args) : BaseExpr(std::forward<Args>(args)...) {}
+	Expression(Args &&...args) : BaseExpr(std::forward<Args>(args)...) {
+		static_assert(std::is_trivially_copyable<Expression>::value, "Expression<> must be trivially copyable");
+		static_assert(std::is_trivially_copyable<BaseExpr>::value, "BaseExpr must be trivially copyable");
+	}
 
 	auto operator[](std::ptrdiff_t i) -> decltype(BaseExpr::get(i)) const {
 		return BaseExpr::get(i);
 	}
 
-	Expression<expression::Abs<BaseExpr>> abs() const {
+	const Expression<expression::Abs<BaseExpr>> abs() const {
 		return {*this};
 	}
-	Expression<expression::Norm<BaseExpr>> norm() const {
+	const Expression<expression::Norm<BaseExpr>> norm() const {
 		return {*this};
 	}
-	Expression<expression::Exp<BaseExpr>> exp() const {
+	const Expression<expression::Exp<BaseExpr>> exp() const {
 		return {*this};
 	}
-	Expression<expression::Exp2<BaseExpr>> exp2() const {
+	const Expression<expression::Exp2<BaseExpr>> exp2() const {
 		return {*this};
 	}
-	Expression<expression::Log<BaseExpr>> log() const {
+	const Expression<expression::Log<BaseExpr>> log() const {
 		return {*this};
 	}
-	Expression<expression::Log2<BaseExpr>> log2() const {
+	const Expression<expression::Log2<BaseExpr>> log2() const {
 		return {*this};
 	}
-	Expression<expression::Log10<BaseExpr>> log10() const {
+	const Expression<expression::Log10<BaseExpr>> log10() const {
 		return {*this};
 	}
-	Expression<expression::Sqrt<BaseExpr>> sqrt() const {
+	const Expression<expression::Sqrt<BaseExpr>> sqrt() const {
 		return {*this};
 	}
-	Expression<expression::Sqrt<BaseExpr>> cbrt() const {
+	const Expression<expression::Sqrt<BaseExpr>> cbrt() const {
 		return {*this};
 	}
-	Expression<expression::Conj<BaseExpr>> conj() const {
+	const Expression<expression::Conj<BaseExpr>> conj() const {
 		return {*this};
 	}
-	Expression<expression::Real<BaseExpr>> real() const {
+	const Expression<expression::Real<BaseExpr>> real() const {
 		return {*this};
 	}
-	Expression<expression::Imag<BaseExpr>> imag() const {
+	const Expression<expression::Imag<BaseExpr>> imag() const {
 		return {*this};
 	}
-	Expression<expression::Arg<BaseExpr>> arg() const {
+	const Expression<expression::Arg<BaseExpr>> arg() const {
 		return {*this};
 	}
-	Expression<expression::Floor<BaseExpr>> floor() const {
+	const Expression<expression::Floor<BaseExpr>> floor() const {
 		return {*this};
 	}
 };
@@ -257,12 +261,6 @@ struct WritableExpression : public Expression<BaseExpr> {
 
 	template<class Expr>
 	WritableExpression & operator=(const Expr &expr) {
-		BaseExpr::operator=(expr);
-		return *this;
-	}
-
-	template<class Expr>
-	WritableExpression & operator=(const WritableExpression<Expr> &expr) {
 		BaseExpr::operator=(expr);
 		return *this;
 	}
@@ -286,7 +284,9 @@ struct LinearImplBase {
 		Linear &linear;
 		RealPointer<V> pointer;
 		size_t size;
-		WritableReal(Linear &linear, RealPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
+		WritableReal(Linear &linear, RealPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {
+			static_assert(std::is_trivially_copyable<WritableReal>::value, "must be trivially copyable");
+		}
 		
 		template<class Expr>
 		WritableReal & operator=(Expression<Expr> expr) {
@@ -320,7 +320,7 @@ struct LinearImplBase {
 			return pointer[i];
 		}
 		template<class L>
-		expression::ReadableComplex<V> maybeCache(L &&, size_t) const {
+		expression::ReadableComplex<V> maybeCache(L &, size_t) const {
 			return {pointer};
 		}
 	};
