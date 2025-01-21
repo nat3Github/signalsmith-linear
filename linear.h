@@ -432,17 +432,19 @@ struct LinearImplBase {
 	}
 
 	template<class Pointer, class Expr>
-	void fill(Pointer pointer, Expression<Expr> expr, size_t size) {
-		return fill(pointer, (Expr &)expr, size);
-	}
-
-	template<class Pointer, class Expr>
 	void fill(Pointer pointer, Expr expr, size_t size) {
 		auto maybeCached = self().maybeCache(expr, size);
 		for (size_t i = 0; i < size; ++i) {
 			pointer[i] = maybeCached.get(i);
 		}
 	}
+
+	// Remove the Expression<...> layer, so the simplification template-matching works
+	template<class Pointer, class Expr>
+	void fill(Pointer pointer, Expression<Expr> expr, size_t size) {
+		return self().fill(pointer, (Expr &)expr, size);
+	};
+
 protected:
 	LinearImplBase(Linear<V> *linearThis) {
 		assert((LinearImplBase *)linearThis == this);
@@ -456,14 +458,29 @@ template<typename V>
 struct Linear : public LinearImplBase<V> {
 	Linear() : LinearImplBase<V>(this) {}
 
-	// An example of a simplification.  This is only called when being evaluated, so it could be used to write things to temporary storage etc.
+	// An example of a simplification.  This is only called when being evaluated, so it could write to temporary storage and return a Readable??? expression.
 	using LinearImplBase<V>::maybeCache;
 	template<class Expr>
-	expression::Abs<Expr> maybeCache(const expression::Sqrt<expression::Norm<Expr>> &expr, size_t size) {
+	expression::Abs<Expr> maybeCache(const expression::Sqrt<expression::Norm<Expr>> &expr, size_t) {
 		return {expr.a.a};
 	}
 	
 	// If the simplification is a better way to write values, then override .fill() for the specific pointer/expression
+	using LinearImplBase<V>::fill;
+	template<class Expr>
+	void fill(RealPointer<V> pointer, expression::Sqrt<expression::Norm<Expr>> expr, size_t size) {
+		auto replacedExpr = maybeCache(expr, size);
+		checkSimplificationWorked(replacedExpr);
+		for (size_t i = 0; i < size; ++i) {
+			pointer[i] = replacedExpr.get(i);
+		}
+	}
+private:
+	template<class Expr>
+	void checkSimplificationWorked(Expr) {}
+	// This specific pattern should've been replaced
+	template<class Expr>
+	void checkSimplificationWorked(expression::Sqrt<expression::Norm<Expr>> expr) = delete;
 };
 
 
