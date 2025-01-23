@@ -288,6 +288,10 @@ struct LinearImplBase {
 			static_assert(std::is_trivially_copyable<WritableReal>::value, "must be trivially copyable");
 		}
 		
+		operator expression::ReadableReal<V>() const {
+			return {pointer};
+		}
+		
 		template<class Expr>
 		WritableReal & operator=(Expression<Expr> expr) {
 			linear.fill(pointer, expr, size);
@@ -309,7 +313,11 @@ struct LinearImplBase {
 		ComplexPointer<V> pointer;
 		size_t size;
 		WritableComplex(Linear &linear, ComplexPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
-		
+
+		operator expression::ReadableComplex<V>() const {
+			return {pointer};
+		}
+
 		template<class Expr>
 		WritableComplex & operator=(Expression<Expr> expr) {
 			linear.fill(pointer, expr, size);
@@ -331,7 +339,11 @@ struct LinearImplBase {
 		SplitPointer<V> pointer;
 		size_t size;
 		WritableSplit(Linear &linear, SplitPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
-		
+
+		operator expression::ReadableSplit<V>() const {
+			return {pointer};
+		}
+
 		template<class Expr>
 		WritableSplit & operator=(Expression<Expr> expr) {
 			linear.fill(pointer, expr, size);
@@ -438,6 +450,36 @@ protected:
 	Linear & self() {
 		return *(Linear *)this;
 	}
+
+	// Nothing in the fallback uses this, but specialisations might use/return internal temporary storage (possibly returning a struct which tracks lifetime/etc.) and then use .fill()
+	template<class Expr>
+	void toPointer(const Expr &expr, size_t size) = delete;
+	
+	template<typename V>
+	ConstRealPointer<V> toPointer(const expression::ReadableReal<V> &expr, size_t) {
+		return expr.pointer;
+	}
+	template<typename V>
+	ConstComplexPointer<V> toPointer(const expression::ReadableComplex<V> &expr, size_t) {
+		return expr.pointer;
+	}
+	template<typename V>
+	ConstSplitPointer<V> toPointer(const expression::ReadableSplit<V> &expr, size_t) {
+		return expr.pointer;
+	}
+
+	template<typename V>
+	RealPointer<V> toPointer(const WritableReal<V> &expr, size_t) {
+		return expr.pointer;
+	}
+	template<typename V>
+	ComplexPointer<V> toPointer(const WritableComplex<V> &expr, size_t) {
+		return expr.pointer;
+	}
+	template<typename V>
+	SplitPointer<V> toPointer(const WritableSplit<V> &expr, size_t) {
+		return expr.pointer;
+	}
 };
 
 // SFINAE template for checking that an expression naturally returns a particular item type
@@ -486,15 +528,68 @@ private:
 	void checkSimplificationWorked(expression::Sqrt<expression::Norm<Expr>> expr) = delete;
 };
 
+/// Helper class for temporary storage, reserved up-front and tracked with values on the stack.
+template<typename V>
+struct Temporary {
+	// This is called if we don't have enough reserved space and end up allocating
+	std::function<void(size_t)> allocationWarning;
+	
+	void reserve(size_t size) {
+		assert(start == buffer);
+		
+		if (buffer) delete[] buffer;
+		start = buffer = new V[size];
+		end = buffer + size;
+	}
+	
+	// A chunk of temporary storage, valid as long as it's in scope on the stack.
+	struct StackScoped {
+		V *pointer;
+		
+		StackScoped(Temporary &temporary, size_t size) : pointer(temporary.start), temporary(temporary) {
+			temporary.start += size;
+			if (temporary.start > temporary.end) {
+				// OK, actually we ran out of temporary space, so allocate
+				pointer = new V[size];
+				// but we're not happy about it. >:(
+				temporary.allocationWarning(temporary.start - temporary.buffer);
+			}
+		}
+		StackScoped(const StackScoped &other) = delete; // no copy/move/etc.
+		~StackScoped() {
+			if (pointer >= temporary.buffer && pointer < temporary.end) {
+				assert(pointer <= temporary.start); // checks (although doesn't guarantee) that the storage wasn't re-allocated under our feet somehow
+				temporary.start = pointer;
+			} else {
+				// We ran out of space, so it was allocated just for this
+				delete[] pointer;
+			}
+		}
+		
+		operator V*() const {
+			return pointer;
+		}
+	private:
+		Temporary &temporary;
+	};
+
+	StackScoped scoped(size_t size) {
+		return {*this, size};
+	}
+private:
+	V *start = nullptr, *end = nullptr;
+	V *buffer = nullptr;
+};
+
 }}; // namespace
 
-//#if defined(SIGNALSMITH_USE_ACCELERATE)
-//#	include "./platform/linear-accelerate.h"
-//#elif 0//defined(SIGNALSMITH_USE_IPP)
-//#	include "./platform/linear-ipp.h"
-//#elif defined(SIGNALSMITH_USE_CBLAS)
-//#	include "./platform/linear-cblas.h"
-//#endif
+#if defined(SIGNALSMITH_USE_ACCELERATE)
+#	include "./platform/linear-accelerate.h"
+#elif 0//defined(SIGNALSMITH_USE_IPP)
+#	include "./platform/linear-ipp.h"
+#elif 0//defined(SIGNALSMITH_USE_CBLAS)
+#	include "./platform/linear-cblas.h"
+#endif
 
 #undef SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE
 #undef SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP

@@ -18,11 +18,11 @@ template<typename Sample>
 struct SimpleFFT {
 	using Complex = std::complex<Sample>;
 	
-	SimpleFFT(int maxSize=0) {
+	SimpleFFT(size_t maxSize=0) {
 		resize(maxSize);
 	}
 	
-	void resize(int maxSize) {
+	void resize(size_t maxSize) {
 		twiddles.resize(maxSize/2);
 		for (int i = 0; i < maxSize/2; ++i) {
 			double twiddlePhase = -2*M_PI*i/maxSize;
@@ -34,7 +34,7 @@ struct SimpleFFT {
 		working.resize(maxSize);
 	}
 	
-	void fft(int size, const Complex *time, Complex *freq) {
+	void fft(size_t size, const Complex *time, Complex *freq) {
 		if (size <= 1) {
 			*freq = *time;
 			return;
@@ -42,7 +42,7 @@ struct SimpleFFT {
 		fftPass<false>(size, 1, time, freq, working.data());
 	}
 
-	void ifft(int size, const Complex *freq, Complex *time) {
+	void ifft(size_t size, const Complex *freq, Complex *time) {
 		if (size <= 1) {
 			*time = *freq;
 			return;
@@ -55,7 +55,7 @@ private:
 
 	// Calculate a [size]-point FFT, where each element is a block of [stride] values
 	template<bool inverse>
-	void fftPass(int size, int stride, const Complex *input, Complex *output, Complex *working) const {
+	void fftPass(size_t size, size_t stride, const Complex *input, Complex *output, Complex *working) const {
 		if (size > 2) {
 			// Calculate the two half-size FFTs (odd and even) by doubling the stride
 			fftPass<inverse>(size/2, stride*2, input, working, output);
@@ -68,7 +68,7 @@ private:
 	
 	// Combine interleaved even/odd results into a single spectrum
 	template<bool inverse>
-	void combine2(int size, int stride, const Complex *input, Complex *output) const {
+	void combine2(size_t size, size_t stride, const Complex *input, Complex *output) const {
 		auto twiddleStep = twiddles.size()*2/size;
 		for (int i = 0; i < size/2; ++i) {
 			Complex twiddle = twiddles[i*twiddleStep];

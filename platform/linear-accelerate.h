@@ -22,11 +22,38 @@ extern "C" {
 namespace signalsmith { namespace linear {
 
 template<>
-struct Linear<float> : public LinearImplBase<float> {
-	using Base = LinearImplBase<float>;
+struct LinearImpl<true> : public LinearImplBase<true> {
+	using Base = LinearImplBase<true>;
 
-	Linear() : Base(this) {}
+	LinearImpl() : Base(this) {}
+	
+	using Base::toPointer;
 
+	using Base::fill;
+	template<class A, class B>
+	void fill(RealPointer<float> pointer, expression::Mul<A, B> expr, size_t size) {
+		auto *a = toPointer(expr.a, size);
+		auto *b = toPointer(expr.b, size);
+		vDSP_vmul(a, 1, b, 1, pointer, 1, size);
+	}
+
+	template<class V>
+	void reserve(size_t) {}
+	
+	template<>
+	void reserve<float>(size_t size) {
+		tmpFloat.reserve(size*4);
+	}
+	template<>
+	void reserve<double>(size_t size) {
+		tmpDouble.reserve(size*4);
+	}
+
+private:
+	Temporary<float> tmpFloat;
+	Temporary<double> tmpDouble;
+
+/*
 	using Base::copy;
 	void copy(const int N, const float *x, const int xStride, float *y, const int yStride) {
 		cblas_scopy(CBLAS_INT(N), x, CBLAS_INT(xStride), y, CBLAS_INT(yStride));
@@ -112,35 +139,41 @@ struct Linear<float> : public LinearImplBase<float> {
 		vDSP_zvmul(&splitA, aStride, &splitB, bStride, &splitC, cStride, N, 1);
 	}
 
+	template<class V>
 	void reserve(size_t) {}
-
-private:
-	static DSPSplitComplex dspSplit(const ConstSplitComplex<float> &x) {
+	
+	template<>
+	void reserve<float>(size_t) {}
+	template<>
+	void reserve<double>(size_t) {}
+*/
+	static DSPSplitComplex dspSplit(ConstSplitPointer<float> x) {
 		DSPSplitComplex dsp;
 		dsp.realp = (float *)x.real;
 		dsp.imagp = (float *)x.imag;
 		return dsp;
 	}
-	static DSPSplitComplex dspSplit(const SplitComplex<float> &x) {
-		DSPSplitComplex dsp;
-		dsp.realp = x.real;
-		dsp.imagp = x.imag;
-		return dsp;
-	}
-	static DSPSplitComplex dspSplit(const std::complex<float> *x) {
+	static DSPSplitComplex dspSplit(ConstComplexPointer<float> x) {
 		DSPSplitComplex dsp;
 		dsp.realp = (float *)x;
 		dsp.imagp = (float *)x + 1;
 		return dsp;
 	}
-	static DSPSplitComplex dspSplit(std::complex<float> *x) {
-		DSPSplitComplex dsp;
-		dsp.realp = (float *)x;
-		dsp.imagp = (float *)x + 1;
+	static DSPDoubleSplitComplex dspSplit(ConstSplitPointer<double> x) {
+		DSPDoubleSplitComplex dsp;
+		dsp.realp = (double *)x.real;
+		dsp.imagp = (double *)x.imag;
+		return dsp;
+	}
+	static DSPDoubleSplitComplex dspSplit(const std::complex<double> *x) {
+		DSPDoubleSplitComplex dsp;
+		dsp.realp = (double *)x;
+		dsp.imagp = (double *)x + 1;
 		return dsp;
 	}
 };
 
+/*
 template<>
 struct Linear<double> : public LinearImplBase<double> {
 	using Base = LinearImplBase<double>;
@@ -200,32 +233,8 @@ struct Linear<double> : public LinearImplBase<double> {
 	
 	void reserve(size_t) {}
 private:
-	static DSPDoubleSplitComplex dspSplit(const ConstSplitComplex<double> &x) {
-		DSPDoubleSplitComplex dsp;
-		dsp.realp = (double *)x.real;
-		dsp.imagp = (double *)x.imag;
-		return dsp;
-	}
-	static DSPDoubleSplitComplex dspSplit(const SplitComplex<double> &x) {
-		DSPDoubleSplitComplex dsp;
-		dsp.realp = x.real;
-		dsp.imagp = x.imag;
-		return dsp;
-	}
-	static DSPDoubleSplitComplex dspSplit(const std::complex<double> *x) {
-		DSPDoubleSplitComplex dsp;
-		dsp.realp = (double *)x;
-		dsp.imagp = (double *)x + 1;
-		return dsp;
-	}
-	static DSPDoubleSplitComplex dspSplit(std::complex<double> *x) {
-		DSPDoubleSplitComplex dsp;
-		dsp.realp = (double *)x;
-		dsp.imagp = (double *)x + 1;
-		return dsp;
-	}
 };
-
+*/
 }}; // namespace
 
 #undef CBLAS_INT

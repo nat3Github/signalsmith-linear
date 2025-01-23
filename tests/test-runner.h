@@ -20,7 +20,7 @@ struct RunData {
 	
 	Sample * real(size_t index) {
 		while (index >= realVectors.size()) {
-			std::default_random_engine engine(seed + realVectors.size());
+			std::default_random_engine engine(unsigned(seed + realVectors.size()));
 			std::uniform_real_distribution<Sample> dist{-1, 1};
 			
 			realVectors.emplace_back(size);
@@ -30,7 +30,7 @@ struct RunData {
 	}
 	Sample * positive(size_t index) {
 		while (index >= positiveVectors.size()) {
-			std::default_random_engine engine(seed + positiveVectors.size());
+			std::default_random_engine engine(unsigned(seed + positiveVectors.size()));
 			std::uniform_real_distribution<Sample> dist{0, 1};
 			
 			positiveVectors.emplace_back(size);
@@ -43,7 +43,7 @@ struct RunData {
 	}
 	Complex * complex(size_t index) {
 		while (index >= complexVectors.size()) {
-			std::default_random_engine engine(seed + realVectors.size());
+			std::default_random_engine engine(unsigned(seed + realVectors.size()));
 			std::uniform_real_distribution<Sample> dist{-1, 1};
 			
 			complexVectors.emplace_back(size);

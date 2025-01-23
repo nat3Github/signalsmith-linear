@@ -8,7 +8,7 @@ template<class Sample>
 struct SimpleWrapper {
 	signalsmith::linear::SimpleFFT<Sample> fft;
 
-	void prepare(int size, int) {
+	void prepare(size_t size, size_t) {
 		fft.resize(size);
 	}
 	
@@ -24,7 +24,7 @@ template<class Sample>
 struct Pow2Wrapper {
 	signalsmith::linear::Pow2FFT<Sample> fft;
 
-	void prepare(int size, int) {
+	void prepare(size_t size, size_t) {
 		fft.resize(size);
 	}
 
@@ -40,7 +40,7 @@ template<class Sample>
 struct SplitWrapper {
 	signalsmith::linear::SplitFFT<Sample> fft;
 
-	void prepare(int size, int) {
+	void prepare(size_t size, size_t) {
 		fft.resize(size);
 	}
 
@@ -57,7 +57,7 @@ template<class Sample>
 struct SignalsmithFFTWrapper {
 	signalsmith::FFT<Sample> fft{1};
 
-	void prepare(int size, int) {
+	void prepare(size_t size, size_t) {
 		fft.setSize(size);
 	}
 	
@@ -74,7 +74,7 @@ template<class Sample>
 struct SignalsmithDSPWrapper {
 	signalsmith::fft::FFT<Sample> fft{1};
 
-	void prepare(int size, int) {
+	void prepare(size_t size, size_t) {
 		fft.setSize(size);
 	}
 	
