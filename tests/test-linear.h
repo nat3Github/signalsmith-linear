@@ -94,7 +94,7 @@ struct OpVoidArBrCr {
 };
 
 struct TestLinear {
-	static const int bigPlotWidth = 350, bigPlotHeight = 250;
+	static const int bigPlotWidth = 300, bigPlotHeight = 250;
 	static const int tinyPlotWidth = 80, tinyPlotHeight = 80;
 	int tinyPlotIndex = 0;
 	static const int tinyPlotColumns = 8;
@@ -107,7 +107,7 @@ struct TestLinear {
 	}
 
 	void addTicks(signalsmith::plot::Plot2D &plot) {
-		plot.y.blank().major(0, "").label("relative speed");
+		plot.y.blank().major(0, "");
 		plot.x.major(nToX(1), "1");
 		for (int n = 4; n <= maxSize; n *= 4) {
 			int log = std::round(std::log2(n));
@@ -141,9 +141,11 @@ struct TestLinear {
 	signalsmith::plot::Legend *legend;
 	
 	TestLinear(int maxSize, double benchmarkSeconds) : maxSize(maxSize), benchmarkSeconds(benchmarkSeconds) {
-		addConfig(1, 0, "float (Linear)");
+		addConfig(2, 0, "float (Linear)");
+		addConfig(1, 0, "float (fallback)");
 		addConfig(0, 0, "float (ref)");
-		addConfig(1, 1, "double (Linear)");
+		addConfig(2, 1, "double (Linear)");
+		addConfig(1, 1, "double (fallback)");
 		addConfig(0, 1, "double (ref)");
 		legend = &configs[0].plot.legend(2, 1);
 		tinyFigure.style.titlePadding = 0;
@@ -205,12 +207,14 @@ struct TestLinear {
 		}
 		legend->add(opLines[0].main, opName);
 		
-		signalsmith::linear::Linear linearFloat;
-		signalsmith::linear::Linear linearDouble;
+		signalsmith::linear::Linear linear;
+		signalsmith::linear::LinearImpl<false> linearFallback;
 		auto runSize = [&](int n){
 			std::cout << "\tn = " << n << "\r" << std::flush;
-			linearFloat.reserve<float>(n);
-			linearDouble.reserve<double>(n);
+			linear.reserve<float>(n);
+			linear.reserve<double>(n);
+			linearFallback.reserve<float>(n);
+			linearFallback.reserve<double>(n);
 
 			RunData<double> dataDouble(n);
 			RunData<float> dataFloat(n);
@@ -219,47 +223,85 @@ struct TestLinear {
 			RunData<float> refDataFloat = dataFloat;
 			opWithArgs.reference(refDataDouble);
 			opWithArgs.reference(refDataFloat);
-			opWithArgs.linear(linearDouble, dataDouble);
-			opWithArgs.linear(linearFloat, dataFloat);
-			if (dataDouble.distance(refDataDouble) > 1e-12*n) {
-				std::cout << "double: n = " << n << ", error = " << dataDouble.distance(refDataDouble) << "\n";
-				std::cout << "\nReference:\n";
-				refDataDouble.log();
-				std::cout << "\nLinear:\n";
-				dataDouble.log();
-				abort();
+			{
+				RunData<double> copyDouble(n);
+				RunData<float> copyFloat(n);
+				opWithArgs.linear(linear, copyDouble);
+				opWithArgs.linear(linear, copyFloat);
+				if (copyDouble.distance(refDataDouble) > 1e-12*n) {
+					std::cout << "Linear double: n = " << n << ", error = " << copyDouble.distance(refDataDouble) << "\n";
+					std::cout << "\nReference:\n";
+					refDataDouble.log();
+					std::cout << "\nLinear:\n";
+					copyDouble.log();
+					abort();
+				}
+				if (copyFloat.distance(refDataFloat) > 1e-6*n) {
+					std::cout << "Linear float: n = " << n << ", error = " << copyFloat.distance(refDataFloat) << "\n";
+					std::cout << "\nReference:\n";
+					refDataFloat.log();
+					std::cout << "\nLinear:\n";
+					copyFloat.log();
+					abort();
+				}
 			}
-			if (dataFloat.distance(refDataFloat) > 1e-6*n) {
-				std::cout << "float: n = " << n << ", error = " << dataFloat.distance(refDataFloat) << "\n";
-				std::cout << "\nReference:\n";
-				refDataFloat.log();
-				std::cout << "\nLinear:\n";
-				dataFloat.log();
-				abort();
+			{
+				RunData<double> copyDouble(n);
+				RunData<float> copyFloat(n);
+				opWithArgs.linear(linearFallback, copyDouble);
+				opWithArgs.linear(linearFallback, copyFloat);
+				if (copyDouble.distance(refDataDouble) > 1e-12*n) {
+					std::cout << "fallback double: n = " << n << ", error = " << copyDouble.distance(refDataDouble) << "\n";
+					std::cout << "\nReference:\n";
+					refDataDouble.log();
+					std::cout << "\nLinear:\n";
+					copyDouble.log();
+					abort();
+				}
+				if (copyFloat.distance(refDataFloat) > 1e-6*n) {
+					std::cout << "fallback float: n = " << n << ", error = " << copyFloat.distance(refDataFloat) << "\n";
+					std::cout << "\nReference:\n";
+					refDataFloat.log();
+					std::cout << "\nLinear:\n";
+					copyFloat.log();
+					abort();
+				}
 			}
-
+			
 			double refTime = n*1e-8;
 			{
 				RunData<float> copy = dataFloat;
 				opLines[0].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
-					opWithArgs.linear(linearFloat, copy);
+					opWithArgs.linear(linear, copy);
 				}));
 			}
 			{
 				RunData<float> copy = dataFloat;
 				opLines[1].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
+					opWithArgs.linear(linearFallback, copy);
+				}));
+			}
+			{
+				RunData<float> copy = dataFloat;
+				opLines[2].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
 					opWithArgs.reference(copy);
 				}));
 			}
 			{
 				RunData<double> copy = dataDouble;
-				opLines[2].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
-					opWithArgs.linear(linearDouble, copy);
+				opLines[3].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
+					opWithArgs.linear(linear, copy);
 				}));
 			}
 			{
 				RunData<double> copy = dataDouble;
-				opLines[3].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
+				opLines[4].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
+					opWithArgs.linear(linearFallback, copy);
+				}));
+			}
+			{
+				RunData<double> copy = dataDouble;
+				opLines[5].add(n, refTime*runBenchmark(benchmarkSeconds, [&](){
 					opWithArgs.reference(copy);
 				}));
 			}
