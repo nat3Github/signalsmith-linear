@@ -8,16 +8,16 @@ template<class Op>
 struct OpVoidArBr {
 	Op op;
 
-	template<typename V>
-	void reference(RunData<V> &data) const {
+	template<class Data>
+	void reference(Data &data) const {
 		auto a = data.real(0), b = data.real(1);
 		for (size_t i = 0; i < data.size; ++i) {
 			op.opRef(a[i], b[i]);
 		}
 	}
 
-	template<typename L, typename V>
-	void linear(L &linear, RunData<V> &data) const {
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
 		op.op(linear.wrap(data.real(0), data.size), linear.wrap(data.real(1), data.size));
 	}
 };
@@ -25,16 +25,16 @@ template<class Op>
 struct OpVoidArBrp {
 	Op op;
 
-	template<typename V>
-	void reference(RunData<V> &data) const {
+	template<class Data>
+	void reference(Data &data) const {
 		auto a = data.real(0), b = data.positive(0);
 		for (size_t i = 0; i < data.size; ++i) {
 			op.opRef(a[i], b[i]);
 		}
 	}
 
-	template<typename L, typename V>
-	void linear(L &linear, RunData<V> &data) const {
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
 		op.op(linear.wrap(data.real(0), data.size), linear.wrap(data.positive(0), data.size));
 	}
 };
@@ -42,8 +42,8 @@ template<class Op>
 struct OpVoidArBc {
 	Op op;
 
-	template<typename V>
-	void reference(RunData<V> &data) const {
+	template<class Data>
+	void reference(Data &data) const {
 		auto a = data.real(0);
 		auto b = data.complex(0);
 		for (size_t i = 0; i < data.size; ++i) {
@@ -51,8 +51,8 @@ struct OpVoidArBc {
 		}
 	}
 
-	template<typename L, typename V>
-	void linear(L &linear, RunData<V> &data) const {
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
 		op.op(linear.wrap(data.real(0), data.size), linear.wrap(data.complex(0), data.size));
 	}
 };
@@ -60,8 +60,8 @@ template<class Op>
 struct OpVoidAcBc {
 	Op op;
 
-	template<typename V>
-	void reference(RunData<V> &data) const {
+	template<class Data>
+	void reference(Data &data) const {
 		auto a = data.complex(0);
 		auto b = data.complex(1);
 		for (size_t i = 0; i < data.size; ++i) {
@@ -69,8 +69,8 @@ struct OpVoidAcBc {
 		}
 	}
 
-	template<typename L, typename V>
-	void linear(L &linear, RunData<V> &data) const {
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
 		op.op(linear.wrap(data.complex(0), data.size), linear.wrap(data.complex(1), data.size));
 	}
 };
@@ -78,16 +78,16 @@ template<class Op>
 struct OpVoidArBrCr {
 	Op op;
 
-	template<typename V>
-	void reference(RunData<V> &data) const {
+	template<class Data>
+	void reference(Data &data) const {
 		auto a = data.real(0), b = data.real(1), c = data.real(2);
 		for (size_t i = 0; i < data.size; ++i) {
 			op.opRef(a[i], b[i], c[i]);
 		}
 	}
 
-	template<typename L, typename V>
-	void linear(L &linear, RunData<V> &data) const {
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
 		auto a = data.real(0), b = data.real(1), c = data.real(2);
 		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size), linear.wrap(c, data.size));
 	}
@@ -96,16 +96,16 @@ template<class Op>
 struct OpVoidArBrCrDr {
 	Op op;
 
-	template<typename V>
-	void reference(RunData<V> &data) const {
+	template<class Data>
+	void reference(Data &data) const {
 		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3);
 		for (size_t i = 0; i < data.size; ++i) {
 			op.opRef(a[i], b[i], c[i], d[i]);
 		}
 	}
 
-	template<typename L, typename V>
-	void linear(L &linear, RunData<V> &data) const {
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
 		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3);
 		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size), linear.wrap(c, data.size), linear.wrap(d, data.size));
 	}
@@ -114,16 +114,16 @@ template<class Op>
 struct OpVoidArBrCrDrEr {
 	Op op;
 
-	template<typename V>
-	void reference(RunData<V> &data) const {
+	template<class Data>
+	void reference(Data &data) const {
 		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3), e = data.real(4);
 		for (size_t i = 0; i < data.size; ++i) {
 			op.opRef(a[i], b[i], c[i], d[i], e[i]);
 		}
 	}
 
-	template<typename L, typename V>
-	void linear(L &linear, RunData<V> &data) const {
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
 		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3), e = data.real(4);
 		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size), linear.wrap(c, data.size), linear.wrap(d, data.size), linear.wrap(e, data.size));
 	}

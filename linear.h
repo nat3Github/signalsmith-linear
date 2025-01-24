@@ -73,10 +73,6 @@ namespace expression {
 		V get(std::ptrdiff_t i) const {
 			return pointer[i];
 		}
-		template<class L>
-		ReadableReal maybeCache(L &, size_t) const {
-			return *this;
-		}
 	};
 	template<typename V>
 	struct ReadableComplex {
@@ -88,10 +84,6 @@ namespace expression {
 		std::complex<V> get(std::ptrdiff_t i) const {
 			return pointer[i];
 		}
-		template<class L>
-		ReadableComplex maybeCache(L &&, size_t) const {
-			return *this;
-		}
 	};
 	template<typename V>
 	struct ReadableSplit {
@@ -102,10 +94,6 @@ namespace expression {
 
 		std::complex<V> get(std::ptrdiff_t i) const {
 			return {pointer.real[i], pointer.imag[i]};
-		}
-		template<class L>
-		ReadableSplit maybeCache(L &, size_t) const {
-			return *this;
 		}
 	};
 	
@@ -146,10 +134,6 @@ namespace expression {
 		auto get(std::ptrdiff_t i) const -> decltype(a.get(i) OP b.get(i)) const { \
 			return a.get(i) OP b.get(i); \
 		} \
-		template<class L> \
-		auto maybeCache(L &l, size_t size) const -> const decltype(l.maybeCache(make##Name(a.maybeCache(l, size), b.maybeCache(l, size)))) { \
-			return l.maybeCache(make##Name(a.maybeCache(l, size), b.maybeCache(l, size))); \
-		}\
 	}; \
 } /*exit expression:: namespace */ \
 template<class A, class B> \
@@ -178,10 +162,6 @@ namespace expression {
 		auto get(std::ptrdiff_t i) const -> decltype(func(a.get(i))) { \
 			return func(a.get(i)); \
 		} \
-		template<class L> \
-		auto maybeCache(L &l, size_t size) const -> const Name<decltype(l.maybeCache(make##Name(a.maybeCache(l, size)), size))> { \
-			return l.maybeCache(make##Name(a.maybeCache(l, size)), size); \
-		}\
 	};
 	
 	template<class A>
@@ -374,10 +354,6 @@ struct LinearImplBase {
 		V get(std::ptrdiff_t i) const {
 			return pointer[i];
 		}
-		template<class L>
-		expression::ReadableReal<V> maybeCache(L &&, size_t) const {
-			return {pointer};
-		}
 	};
 	template<typename V>
 	struct WritableComplex {
@@ -400,10 +376,6 @@ struct LinearImplBase {
 		std::complex<V> get(std::ptrdiff_t i) const {
 			return pointer[i];
 		}
-		template<class L>
-		expression::ReadableComplex<V> maybeCache(L &, size_t) const {
-			return {pointer};
-		}
 	};
 	template<typename V>
 	struct WritableSplit {
@@ -425,10 +397,6 @@ struct LinearImplBase {
 
 		std::complex<V> get(std::ptrdiff_t i) const {
 			return {pointer.real[i], pointer.imag[i]};
-		}
-		template<class L>
-		expression::ReadableSplit<V> maybeCache(L &&, size_t) const {
-			return {pointer};
 		}
 	};
 	
@@ -503,9 +471,7 @@ struct LinearImplBase {
 
 	template<class Pointer, class Expr>
 	void fill(Pointer pointer, Expr expr, size_t size) {
-if (size == 1) LOG_EXPR(expr.name());
-		auto maybeCached = expr.maybeCache(self(), size);
-if (size == 1) LOG_EXPR(maybeCached.name());
+		auto maybeCached = self().maybeCache(expr, size);
 		for (size_t i = 0; i < size; ++i) {
 			pointer[i] = maybeCached.get(i);
 		}
@@ -526,9 +492,10 @@ protected:
 		return *(Linear *)this;
 	}
 
+	template<size_t alignBytes=0>
 	struct CachedResults {
-		Temporary<float> floats;
-		Temporary<double> doubles;
+		Temporary<float, alignBytes> floats;
+		Temporary<double, alignBytes> doubles;
 		
 		CachedResults(Linear &linear) : linear(linear) {}
 
@@ -552,7 +519,7 @@ protected:
 		template<class Expr>
 		ConstRealPointer<float> realFloat(Expr expr, size_t size) {
 			auto chunk = floats(size);
-			linear.fill(chunk, expr, size);
+			linear.fill(chunk, linear.maybeCache(expr, size), size);
 			return chunk;
 		}
 		ConstRealPointer<float> realFloat(expression::ReadableReal<float> expr, size_t size) {
@@ -564,7 +531,7 @@ protected:
 		template<class Expr>
 		ConstRealPointer<double> realDouble(Expr expr, size_t size) {
 			auto chunk = doubles(size);
-			linear.fill(chunk, expr, size);
+			linear.fill(chunk, linear.maybeCache(expr, size), size);
 			return chunk;
 		}
 		ConstRealPointer<double> realDouble(expression::ReadableReal<double> expr, size_t size) {
@@ -594,35 +561,22 @@ template<bool useLinear>
 struct LinearImpl : public LinearImplBase<useLinear> {
 	LinearImpl() : LinearImplBase<useLinear>(this) {}
 
-	// An example of a simplification.  This is only called when being evaluated, so it could write to temporary storage and return a Readable??? expression.
-	using LinearImplBase<useLinear>::maybeCache;
-
-	// Commenting either of these out should make the `.fill()` below fail to compile.
-	template<class Expr>
-	ItemType<Expr, std::complex<float>, expression::Abs<Expr>> maybeCache(const expression::Sqrt<expression::Norm<Expr>> &expr, size_t) {
-		return {expr.a.a};
-	}
-	template<class Expr>
-	ItemType<Expr, std::complex<double>, expression::Abs<Expr>> maybeCache(const expression::Sqrt<expression::Norm<Expr>> &expr, size_t) {
-		return {expr.a.a};
-	}
-
-	// If the simplification is a better way to write values, then override .fill() for the specific pointer/expression.  Since `.maybeCache()` should only be called from `.fill()`, this still works even if `.maybeCache()` replaces the same pattern.
-	using LinearImplBase<useLinear>::fill;
-	template<typename V, class Expr>
-	void fill(RealPointer<V> pointer, expression::Sqrt<expression::Norm<Expr>> expr, size_t size) {
-		auto replacedExpr = expr.maybeCache(*this, size);
-		checkSimplificationWorked(replacedExpr);
-		for (size_t i = 0; i < size; ++i) {
-			pointer[i] = replacedExpr.get(i);
-		}
-	}
+//	// Override .fill() for specific pointer/expressions which you can do quickly.  Calling `cached.realFloat()` etc. will call back to .fill()
+//	using LinearImplBase<useLinear>::fill;
+//	template<typename V, class Expr>
+//	void fill(RealPointer<V> pointer, expression::Sqrt<expression::Norm<Expr>> expr, size_t size) {
+//		auto replacedExpr = maybeCache(expr, size);
+//		checkSimplificationWorked(replacedExpr);
+//		for (size_t i = 0; i < size; ++i) {
+//			pointer[i] = replacedExpr.get(i);
+//		}
+//	}
 private:
-	template<class Expr>
-	void checkSimplificationWorked(Expr) {}
-	// This specific pattern should've been replaced
-	template<class Expr>
-	void checkSimplificationWorked(expression::Sqrt<expression::Norm<Expr>> expr) = delete;
+//	template<class Expr>
+//	void checkSimplificationWorked(Expr) {}
+//	// This specific pattern should've been replaced
+//	template<class Expr>
+//	void checkSimplificationWorked(expression::Sqrt<expression::Norm<Expr>> expr) = delete;
 };
 
 }}; // namespace

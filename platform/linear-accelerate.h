@@ -27,33 +27,6 @@ struct LinearImpl<true> : public LinearImplBase<true> {
 
 	LinearImpl() : Base(this), cached(*this) {}
 
-	using Base::maybeCache;
-
-	// C*(A + B) -> (A + B)*C
-	template<class A, class B, class C>
-	expression::Mul<expression::Add<A, B>, C> maybeCache(const expression::Mul<C, expression::Add<A, B>> &expr, size_t) {
-LOG_EXPR("REPLACEMENT MUL<ADD>");
-		return {expr.b, expr.a};
-	}
-	// C*(A - B) -> (A - B)*C
-	template<class A, class B, class C>
-	expression::Mul<expression::Sub<A, B>, C> maybeCache(const expression::Mul<C, expression::Sub<A, B>> &expr, size_t) {
-LOG_EXPR("REPLACEMENT MUL<SUB>");
-		return {expr.b, expr.a};
-	}
-	// C + A*B -> A*B + C
-	template<class A, class B, class C>
-	expression::Add<expression::Mul<A, B>, C> maybeCache(const expression::Add<C, expression::Mul<A, B>> &expr, size_t) {
-LOG_EXPR("REPLACEMENT ADD<MUL>");
-		return {expr.b, expr.a};
-	}
-//	// B*C - A -> A + B*C
-//	template<class A, class B, class C>
-//	expression::Mul<expression::Sub<A, B>, C> maybeCache(expression::Mul<C, expression::Sub<A, B>> expr, size_t) {
-//		return {expr.b, expr.a};
-//	}
-
-
 	using Base::fill;
 #define SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Name, vDSP_func) \
 	template<class A, class B> \
@@ -93,9 +66,27 @@ LOG_EXPR("REPLACEMENT ADD<MUL>");
 		auto *c = cached.realDouble(expr.b, size); \
 		vDSP_func##D(a, 1, b, 1, c, 1, pointer, 1, size); \
 	}
-	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(Add, Mul, vDSP_vam)
-	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(Mul, Add, vDSP_vma)
-	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(Sub, Mul, vDSP_vsbm)
+#define SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(NameL, Name, vDSP_func) \
+	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(NameL, Name, vDSP_func) \
+	template<class A, class B, class C> \
+	void fill(RealPointer<float> pointer, expression::Name<C, expression::NameL<A, B>> expr, size_t size) { \
+		auto scoped = cached.scope(); \
+		auto *a = cached.realFloat(expr.b.a, size); \
+		auto *b = cached.realFloat(expr.b.b, size); \
+		auto *c = cached.realFloat(expr.a, size); \
+		vDSP_func(a, 1, b, 1, c, 1, pointer, 1, size); \
+	} \
+	template<class A, class B, class C> \
+	void fill(RealPointer<double> pointer, expression::Name<C, expression::NameL<A, B>> expr, size_t size) { \
+		auto scoped = cached.scope(); \
+		auto *a = cached.realDouble(expr.b.a, size); \
+		auto *b = cached.realDouble(expr.b.b, size); \
+		auto *c = cached.realDouble(expr.a, size); \
+		vDSP_func##D(a, 1, b, 1, c, 1, pointer, 1, size); \
+	}
+	SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(Add, Mul, vDSP_vam)
+	SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(Mul, Add, vDSP_vma)
+	SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(Sub, Mul, vDSP_vsbm)
 	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(Mul, Sub, vDSP_vmsb)
 #undef SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR
 
@@ -112,7 +103,7 @@ LOG_EXPR("REPLACEMENT ADD<MUL>");
 	}
 
 protected:
-	CachedResults cached;
+	CachedResults<32> cached;
 /*
 	using Base::copy;
 	void copy(const int N, const float *x, const int xStride, float *y, const int yStride) {

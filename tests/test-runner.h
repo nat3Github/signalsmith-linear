@@ -7,75 +7,100 @@
 #include <vector>
 #include <random>
 
-template<typename Sample>
+template<typename Sample, size_t alignBytes=32>
 struct RunData {
 	using Complex = std::complex<Sample>;
 
+	static constexpr size_t extraAlignmentItems = alignBytes/sizeof(Sample);
+	template<class V>
+	static V * nextAligned(V *ptr) {
+		return (V *)((size_t(ptr) + (alignBytes - 1))&~(alignBytes - 1));
+	}
+
 	const size_t size;
-	std::vector<std::vector<Sample>> realVectors;
-	std::vector<std::vector<Sample>> positiveVectors;
-	std::vector<std::vector<Complex>> complexVectors;
-	
+	std::vector<Sample *> reals;
+	std::vector<Sample *> positives;
+	std::vector<Complex *> complexes;
+
 	RunData(size_t size, int seed=0) : size(size), seed(seed) {}
+	RunData(const RunData &other) : size(other.size), seed(other.seed) {
+		for (auto *otherP : other.reals) {
+			auto *thisP = real(reals.size());
+			for (size_t i = 0; i < size; ++i) thisP[i] = otherP[i];
+		}
+		for (auto *otherP : other.positives) {
+			auto *thisP = positive(positives.size());
+			for (size_t i = 0; i < size; ++i) thisP[i] = otherP[i];
+		}
+		for (auto *otherP : other.complexes) {
+			auto *thisP = complex(complexes.size());
+			for (size_t i = 0; i < size; ++i) thisP[i] = otherP[i];
+		}
+	}
 	
 	Sample * real(size_t index) {
 		while (index >= realVectors.size()) {
 			std::default_random_engine engine(unsigned(seed + realVectors.size()));
 			std::uniform_real_distribution<Sample> dist{-1, 1};
 			
-			realVectors.emplace_back(size);
-			for (auto &v : realVectors.back()) v = dist(engine);
+			realVectors.emplace_back(size + extraAlignmentItems);
+			reals.push_back(nextAligned(realVectors.back().data()));
+			for (size_t i = 0; i < size; ++i) reals.back()[i] = dist(engine);
 		}
-		return realVectors[index].data();
+		return reals[index];
 	}
 	Sample * positive(size_t index) {
 		while (index >= positiveVectors.size()) {
 			std::default_random_engine engine(unsigned(seed + positiveVectors.size()));
 			std::uniform_real_distribution<Sample> dist{0, 1};
 			
-			positiveVectors.emplace_back(size);
-			for (auto &v : positiveVectors.back()) {
-				v = dist(engine);
+			positiveVectors.emplace_back(size + extraAlignmentItems);
+			positives.push_back(nextAligned(positiveVectors.back().data()));
+			for (size_t i = 0; i < size; ++i) {
+				Sample v = dist(engine);
 				while (v <= 0) v = dist(engine);
+				positives.back()[i] = v;
 			}
 		}
-		return positiveVectors[index].data();
+		return positives[index];
 	}
 	Complex * complex(size_t index) {
 		while (index >= complexVectors.size()) {
 			std::default_random_engine engine(unsigned(seed + realVectors.size()));
 			std::uniform_real_distribution<Sample> dist{-1, 1};
 			
-			complexVectors.emplace_back(size);
-			for (auto &v : complexVectors.back()) {
-				v = {dist(engine), dist(engine)};
+			complexVectors.emplace_back(size + extraAlignmentItems*2);
+			complexes.push_back(nextAligned(complexVectors.back().data()));
+			for (size_t i = 0; i < size; ++i) {
+				Complex v = {dist(engine), dist(engine)};
+				complexes.back()[i] = v;
 			}
 		}
-		return complexVectors[index].data();
+		return complexes[index];
 	}
 	
 	double distance(const RunData<Sample> &other) const {
 		double error2 = 0;
 		
-		for (size_t vi = 0; vi < realVectors.size(); ++vi) {
-			auto &thisVector = realVectors[vi];
-			auto &otherVector = other.realVectors[vi];
+		for (size_t vi = 0; vi < reals.size(); ++vi) {
+			auto *thisVector = reals[vi];
+			auto *otherVector = other.reals[vi];
 			for (size_t i = 0; i < size; ++i) {
 				auto diff = thisVector[i] - otherVector[i];
 				error2 += diff*diff;
 			}
 		}
-		for (size_t vi = 0; vi < positiveVectors.size(); ++vi) {
-			auto &thisVector = positiveVectors[vi];
-			auto &otherVector = other.positiveVectors[vi];
+		for (size_t vi = 0; vi < positives.size(); ++vi) {
+			auto *thisVector = positives[vi];
+			auto *otherVector = other.positives[vi];
 			for (size_t i = 0; i < size; ++i) {
 				auto diff = thisVector[i] - otherVector[i];
 				error2 += diff*diff;
 			}
 		}
-		for (size_t vi = 0; vi < complexVectors.size(); ++vi) {
-			auto &thisVector = complexVectors[vi];
-			auto &otherVector = other.complexVectors[vi];
+		for (size_t vi = 0; vi < complexes.size(); ++vi) {
+			auto *thisVector = complexes[vi];
+			auto *otherVector = other.complexes[vi];
 			for (size_t i = 0; i < size; ++i) {
 				error2 += std::norm(thisVector[i] - otherVector[i]);
 			}
@@ -85,18 +110,24 @@ struct RunData {
 	}
 	
 	void log() const {
-		for (size_t i = 0; i < realVectors.size(); ++i) {
+		for (size_t i = 0; i < reals.size(); ++i) {
 			std::cout << "\tr" << i;
 		}
-		for (size_t i = 0; i < complexVectors.size(); ++i) {
+		for (size_t i = 0; i < positives.size(); ++i) {
+			std::cout << "\tp" << i;
+		}
+		for (size_t i = 0; i < complexes.size(); ++i) {
 			std::cout << "\tc" << i;
 		}
 		std::cout << "\n";
 		for (size_t i = 0; i < size; ++i) {
-			for (auto &vector : realVectors) {
+			for (auto *vector : reals) {
 				std::cout << "\t" << vector[i];
 			}
-			for (auto &vector : complexVectors) {
+			for (auto *vector : positives) {
+				std::cout << "\t" << vector[i];
+			}
+			for (auto *vector : complexes) {
 				std::cout << "\t" << vector[i];
 			}
 			std::cout << "\n";
@@ -105,6 +136,9 @@ struct RunData {
 	
 private:
 	int seed;
+	std::vector<std::vector<Sample>> realVectors;
+	std::vector<std::vector<Sample>> positiveVectors;
+	std::vector<std::vector<Complex>> complexVectors;
 };
 
 template<class Fn>
