@@ -92,6 +92,42 @@ struct OpVoidArBrCr {
 		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size), linear.wrap(c, data.size));
 	}
 };
+template<class Op>
+struct OpVoidArBrCrDr {
+	Op op;
+
+	template<typename V>
+	void reference(RunData<V> &data) const {
+		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3);
+		for (size_t i = 0; i < data.size; ++i) {
+			op.opRef(a[i], b[i], c[i], d[i]);
+		}
+	}
+
+	template<typename L, typename V>
+	void linear(L &linear, RunData<V> &data) const {
+		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3);
+		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size), linear.wrap(c, data.size), linear.wrap(d, data.size));
+	}
+};
+template<class Op>
+struct OpVoidArBrCrDrEr {
+	Op op;
+
+	template<typename V>
+	void reference(RunData<V> &data) const {
+		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3), e = data.real(4);
+		for (size_t i = 0; i < data.size; ++i) {
+			op.opRef(a[i], b[i], c[i], d[i], e[i]);
+		}
+	}
+
+	template<typename L, typename V>
+	void linear(L &linear, RunData<V> &data) const {
+		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3), e = data.real(4);
+		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size), linear.wrap(c, data.size), linear.wrap(d, data.size), linear.wrap(e, data.size));
+	}
+};
 
 struct TestLinear {
 	static const int bigPlotWidth = 300, bigPlotHeight = 250;
@@ -343,6 +379,30 @@ struct Name { \
 		expr; \
 	} \
 };
+#define TEST_EXPR4(Name, refExpr, expr) \
+struct Name { \
+	const char *name = #expr; \
+	template<class A, class B, class C, class D> \
+	void opRef(A &a, B &b, C &c, D &d) const { \
+		refExpr; \
+	} \
+	template<class A, class B, class C, class D> \
+	void op(A &&a, B &&b, C &&c, D &&d) const { \
+		expr; \
+	} \
+};
+#define TEST_EXPR5(Name, refExpr, expr) \
+struct Name { \
+	const char *name = #expr; \
+	template<class A, class B, class C, class D, class E> \
+	void opRef(A &a, B &b, C &c, D &d, E &e) const { \
+		refExpr; \
+	} \
+	template<class A, class B, class C, class D, class E> \
+	void op(A &&a, B &&b, C &&c, D &&d, E &&e) const { \
+		expr; \
+	} \
+};
 TEST_EXPR2(Assign, a = b, a = b);
 TEST_EXPR3(Add, a = b + c, a = b + c);
 TEST_EXPR3(Sub, a = b - c, a = b - c);
@@ -366,9 +426,28 @@ TEST_EXPR2(Arg, a = std::arg(b), a = b.arg());
 TEST_EXPR2(Floor, a = std::floor(b), a = b.floor());
 TEST_EXPR2(MinusFloor, a = b - std::floor(b), a = b - b.floor());
 
+TEST_EXPR4(MulAdd, a = b*c + d, a = b*c + d);
+TEST_EXPR4(MulAdd2, a = b + c*d, a = b + c*d);
+TEST_EXPR4(AddMul, a = b*(c + d), a = b*(c + d));
+TEST_EXPR4(AddMul2, a = (b + c)*d, a = (b + c)*d);
+TEST_EXPR4(MulSub, a = b*c - d, a = b*c - d);
+TEST_EXPR4(MulSub2, a = b - c*d, a = b - c*d);
+TEST_EXPR4(SubMul, a = b*(c - d), a = b*(c - d));
+TEST_EXPR4(SubMul2, a = (b - c)*d, a = (b - c)*d);
+
 void testLinear(int maxSize, double benchmarkSeconds) {
 	std::cout << "\nExpressions\n-----------\n";
 	TestLinear test(maxSize, benchmarkSeconds);
+
+	test.addOp<OpVoidArBrCrDr<MulAdd>>("MulAddR");
+	test.addOp<OpVoidArBrCrDr<MulAdd2>>("MulAddR2");
+	test.addOp<OpVoidArBrCrDr<AddMul>>("AddMulR");
+	test.addOp<OpVoidArBrCrDr<AddMul2>>("AddMul2R");
+	test.addOp<OpVoidArBrCrDr<MulSub>>("MulSubR");
+	test.addOp<OpVoidArBrCrDr<MulSub2>>("MulSubR2");
+	test.addOp<OpVoidArBrCrDr<SubMul>>("SubMulR");
+	test.addOp<OpVoidArBrCrDr<SubMul2>>("SubMul2R");
+
 	test.addOp<OpVoidArBr<Assign>>("AssignR");
 	test.addOp<OpVoidArBrCr<Add>>("AddR");
 	test.addOp<OpVoidArBrCr<Sub>>("SubR");

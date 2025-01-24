@@ -24,7 +24,7 @@ struct SimpleFFT {
 	
 	void resize(size_t maxSize) {
 		twiddles.resize(maxSize/2);
-		for (int i = 0; i < maxSize/2; ++i) {
+		for (size_t i = 0; i < maxSize/2; ++i) {
 			double twiddlePhase = -2*M_PI*i/maxSize;
 			twiddles[i] = {
 				Sample(std::cos(twiddlePhase)),
@@ -70,14 +70,14 @@ private:
 	template<bool inverse>
 	void combine2(size_t size, size_t stride, const Complex *input, Complex *output) const {
 		auto twiddleStep = twiddles.size()*2/size;
-		for (int i = 0; i < size/2; ++i) {
+		for (size_t i = 0; i < size/2; ++i) {
 			Complex twiddle = twiddles[i*twiddleStep];
 			
 			const Complex *inputA = input + 2*i*stride;
 			const Complex *inputB = input + (2*i + 1)*stride;
 			Complex *outputA = output + i*stride;
 			Complex *outputB = output + (i + size/2)*stride;
-			for (int s = 0; s < stride; ++s) {
+			for (size_t s = 0; s < stride; ++s) {
 				Complex a = inputA[s];
 				Complex b = inputB[s]*(inverse ? std::conj(twiddle) : twiddle);
 				outputA[s] = a + b;

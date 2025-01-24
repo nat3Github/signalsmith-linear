@@ -43,10 +43,18 @@ struct Expression;
 template<class BaseExpr>
 struct WritableExpression;
 
-#define EXPRESSION_NAME(nameExpr) \
+#define EXPRESSION_NAME(Class, nameExpr) \
 	static std::string name() {\
 		return nameExpr; \
 	}
+
+//#undef EXPRESSION_NAME
+//#include <typeinfo>
+//#define EXPRESSION_NAME(Class, nameExpr) \
+//	static std::string name() { \
+//		return typeid(Class).name(); \
+//	}
+
 
 // Expression templates, which always hold const pointers
 namespace expression {
@@ -57,7 +65,7 @@ namespace expression {
 	// Expressions that just read from a pointer
 	template<typename V>
 	struct ReadableReal {
-		EXPRESSION_NAME("ReadableReal");
+		EXPRESSION_NAME(ReadableReal, "const V*");
 		ConstRealPointer<V> pointer;
 
 		ReadableReal(ConstRealPointer<V> pointer) : pointer(pointer) {}
@@ -72,7 +80,7 @@ namespace expression {
 	};
 	template<typename V>
 	struct ReadableComplex {
-		EXPRESSION_NAME("ReadableComplex");
+		EXPRESSION_NAME(ReadableComplex, "const VC*");
 		ConstComplexPointer<V> pointer;
 
 		ReadableComplex(ConstComplexPointer<V> pointer) : pointer(pointer) {}
@@ -87,7 +95,7 @@ namespace expression {
 	};
 	template<typename V>
 	struct ReadableSplit {
-		EXPRESSION_NAME("ReadableSplit");
+		EXPRESSION_NAME(ReadableSplit, "const VS*");
 		ConstSplitPointer<V> pointer;
 
 		ReadableSplit(ConstSplitPointer<V> pointer) : pointer(pointer) {}
@@ -124,8 +132,14 @@ namespace expression {
 
 #define SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Name, OP) \
 	template<class A, class B> \
+	struct Name; \
+	template<class A, class B> \
+	Name<A, B> make##Name(A a, B b) { \
+		return {a, b}; \
+	} \
+	template<class A, class B> \
 	struct Name { \
-		EXPRESSION_NAME((#Name "<") + A::name() + "," + B::name() + ">"); \
+		EXPRESSION_NAME(Name, (#Name "<") + A::name() + "," + B::name() + ">"); \
 		A a; \
 		B b; \
 		Name(const A &a, const B &b) : a(a), b(b) {} \
@@ -133,8 +147,8 @@ namespace expression {
 			return a.get(i) OP b.get(i); \
 		} \
 		template<class L> \
-		auto maybeCache(L &l, size_t size) const -> const Name<decltype(l.maybeCache(a, size)),decltype(l.maybeCache(b, size))> { \
-			return {l.maybeCache(a, size), l.maybeCache(b, size)}; \
+		auto maybeCache(L &l, size_t size) const -> const decltype(l.maybeCache(make##Name(a.maybeCache(l, size), b.maybeCache(l, size)))) { \
+			return l.maybeCache(make##Name(a.maybeCache(l, size), b.maybeCache(l, size))); \
 		}\
 	}; \
 } /*exit expression:: namespace */ \
@@ -151,16 +165,22 @@ namespace expression {
 
 #define SIGNALSMITH_AUDIO_LINEAR_FUNC1(Name, func) \
 	template<class A> \
+	struct Name; \
+	template<class A> \
+	Name<A> make##Name(A a) { \
+		return {a}; \
+	} \
+	template<class A> \
 	struct Name { \
-		EXPRESSION_NAME((#Name "<") + A::name() + ">"); \
+		EXPRESSION_NAME(Name, (#Name "<") + A::name() + ">"); \
 		A a; \
 		Name(const A &a) : a(a) {} \
 		auto get(std::ptrdiff_t i) const -> decltype(func(a.get(i))) { \
 			return func(a.get(i)); \
 		} \
 		template<class L> \
-		auto maybeCache(L &l, size_t size) const -> const Name<decltype(l.maybeCache(a, size))> { \
-			return {l.maybeCache(a, size)}; \
+		auto maybeCache(L &l, size_t size) const -> const Name<decltype(l.maybeCache(make##Name(a.maybeCache(l, size)), size))> { \
+			return l.maybeCache(make##Name(a.maybeCache(l, size)), size); \
 		}\
 	};
 	
@@ -183,7 +203,7 @@ namespace expression {
 		A real = a.real(), imag = a.imag();
 		return real*real + imag*imag;
 	}
-	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Norm, std::norm)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Norm, fastNorm)
 
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp, std::exp)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp2, std::exp2)
@@ -271,6 +291,59 @@ struct WritableExpression : public Expression<BaseExpr> {
 	}
 };
 
+/// Helper class for temporary storage
+template<typename V, size_t alignBytes=sizeof(V)>
+struct Temporary {
+	// This is called if we don't have enough reserved space and end up allocating
+	std::function<void(size_t)> allocationWarning;
+	
+	void reserve(size_t size) {
+		if (buffer) delete[] buffer;
+		buffer = new V[size];
+		alignedBuffer = nextAligned(buffer);
+		if (alignedBuffer != buffer) {
+			delete[] buffer;
+			buffer = new V[size + extraAlignmentItems];
+			alignedBuffer = nextAligned(buffer);
+		}
+		start = alignedBuffer;
+		end = alignedBuffer + size;
+	}
+
+	/// Valid until the next call to .clear() or .reserve()
+	V * operator()(size_t size) {
+		V *result = start;
+		V *newStart = start + size;
+		if (newStart > end) {
+			// OK, actually we ran out of temporary space, so allocate
+			fallbacks.emplace_back(size + extraAlignmentItems);
+			result = nextAligned(fallbacks.back().data());
+			// but we're not happy about it. >:(
+			if (allocationWarning) allocationWarning(newStart - buffer);
+		}
+		start = nextAligned(newStart);
+		return result;
+	}
+
+	void clear() {
+		start = alignedBuffer;
+		fallbacks.resize(0);
+		fallbacks.shrink_to_fit();
+	}
+
+private:
+	static constexpr size_t extraAlignmentItems = alignBytes/sizeof(V);
+	static V * nextAligned(V *ptr) {
+		return (V*)((size_t(ptr) + (alignBytes - 1))&~(alignBytes - 1));
+	}
+
+	size_t depth = 0;
+	V *start = nullptr, *end = nullptr;
+	V *buffer = nullptr, *alignedBuffer = nullptr;
+
+	std::vector<std::vector<V>> fallbacks;
+};
+
 template<bool useLinear=true>
 struct LinearImplBase {
 	using Linear = LinearImpl<useLinear>;
@@ -280,7 +353,7 @@ struct LinearImplBase {
 
 	template<typename V>
 	struct WritableReal {
-		EXPRESSION_NAME("WritableReal");
+		EXPRESSION_NAME(WritableReal, "V*");
 		Linear &linear;
 		RealPointer<V> pointer;
 		size_t size;
@@ -308,7 +381,7 @@ struct LinearImplBase {
 	};
 	template<typename V>
 	struct WritableComplex {
-		EXPRESSION_NAME("WritableComplex");
+		EXPRESSION_NAME(WritableComplex, "VC*");
 		Linear &linear;
 		ComplexPointer<V> pointer;
 		size_t size;
@@ -334,7 +407,7 @@ struct LinearImplBase {
 	};
 	template<typename V>
 	struct WritableSplit {
-		EXPRESSION_NAME("WritableSplit");
+		EXPRESSION_NAME(WritableSplit, "VS*");
 		Linear &linear;
 		SplitPointer<V> pointer;
 		size_t size;
@@ -424,13 +497,15 @@ struct LinearImplBase {
 
 	// If there are fast ways to compute specific expressions, this lets us store that result in temporary space, and then return a pointer expression
 	template<class Expr>
-	auto maybeCache(const Expr &expr, size_t size) -> decltype(expr.maybeCache(*this, size)) {
-		return expr.maybeCache(*this, size);
+	Expr maybeCache(const Expr &expr, size_t size) {
+		return expr;
 	}
 
 	template<class Pointer, class Expr>
 	void fill(Pointer pointer, Expr expr, size_t size) {
-		auto maybeCached = self().maybeCache(expr, size);
+if (size == 1) LOG_EXPR(expr.name());
+		auto maybeCached = expr.maybeCache(self(), size);
+if (size == 1) LOG_EXPR(maybeCached.name());
 		for (size_t i = 0; i < size; ++i) {
 			pointer[i] = maybeCached.get(i);
 		}
@@ -451,35 +526,57 @@ protected:
 		return *(Linear *)this;
 	}
 
-	// Nothing in the fallback uses this, but specialisations might use/return internal temporary storage (possibly returning a struct which tracks lifetime/etc.) and then use .fill()
-	template<class Expr>
-	void toPointer(const Expr &expr, size_t size) = delete;
-	
-	template<typename V>
-	ConstRealPointer<V> toPointer(const expression::ReadableReal<V> &expr, size_t) {
-		return expr.pointer;
-	}
-	template<typename V>
-	ConstComplexPointer<V> toPointer(const expression::ReadableComplex<V> &expr, size_t) {
-		return expr.pointer;
-	}
-	template<typename V>
-	ConstSplitPointer<V> toPointer(const expression::ReadableSplit<V> &expr, size_t) {
-		return expr.pointer;
-	}
+	struct CachedResults {
+		Temporary<float> floats;
+		Temporary<double> doubles;
+		
+		CachedResults(Linear &linear) : linear(linear) {}
 
-	template<typename V>
-	RealPointer<V> toPointer(const WritableReal<V> &expr, size_t) {
-		return expr.pointer;
-	}
-	template<typename V>
-	ComplexPointer<V> toPointer(const WritableComplex<V> &expr, size_t) {
-		return expr.pointer;
-	}
-	template<typename V>
-	SplitPointer<V> toPointer(const WritableSplit<V> &expr, size_t) {
-		return expr.pointer;
-	}
+		struct RetainScope {
+			RetainScope(CachedResults &cached) : cached(cached) {
+				++cached.depth;
+			}
+			~RetainScope() {
+				if (!--cached.depth) {
+					cached.floats.clear();
+					cached.doubles.clear();
+				}
+			}
+		private:
+			CachedResults &cached;
+		};
+		RetainScope scope() {
+			return {*this};
+		}
+
+		template<class Expr>
+		ConstRealPointer<float> realFloat(Expr expr, size_t size) {
+			auto chunk = floats(size);
+			linear.fill(chunk, expr, size);
+			return chunk;
+		}
+		ConstRealPointer<float> realFloat(expression::ReadableReal<float> expr, size_t size) {
+			return expr.pointer;
+		}
+		ConstRealPointer<float> realFloat(WritableReal<float> expr, size_t size) {
+			return expr.pointer;
+		}
+		template<class Expr>
+		ConstRealPointer<double> realDouble(Expr expr, size_t size) {
+			auto chunk = doubles(size);
+			linear.fill(chunk, expr, size);
+			return chunk;
+		}
+		ConstRealPointer<double> realDouble(expression::ReadableReal<double> expr, size_t size) {
+			return expr.pointer;
+		}
+		ConstRealPointer<double> realDouble(WritableReal<double> expr, size_t size) {
+			return expr.pointer;
+		}
+	private:
+		Linear &linear;
+		int depth = 0;
+	};
 };
 
 // SFINAE template for checking that an expression naturally returns a particular item type
@@ -497,14 +594,14 @@ template<bool useLinear>
 struct LinearImpl : public LinearImplBase<useLinear> {
 	LinearImpl() : LinearImplBase<useLinear>(this) {}
 
-	// An example of a simplification.  This is only called when being evaluated, so it could write to temporary storage and return a Readable??? expression.  Commenting this example out should make the `.fill()` below fail to compile.
+	// An example of a simplification.  This is only called when being evaluated, so it could write to temporary storage and return a Readable??? expression.
 	using LinearImplBase<useLinear>::maybeCache;
 
+	// Commenting either of these out should make the `.fill()` below fail to compile.
 	template<class Expr>
 	ItemType<Expr, std::complex<float>, expression::Abs<Expr>> maybeCache(const expression::Sqrt<expression::Norm<Expr>> &expr, size_t) {
 		return {expr.a.a};
 	}
-
 	template<class Expr>
 	ItemType<Expr, std::complex<double>, expression::Abs<Expr>> maybeCache(const expression::Sqrt<expression::Norm<Expr>> &expr, size_t) {
 		return {expr.a.a};
@@ -514,7 +611,7 @@ struct LinearImpl : public LinearImplBase<useLinear> {
 	using LinearImplBase<useLinear>::fill;
 	template<typename V, class Expr>
 	void fill(RealPointer<V> pointer, expression::Sqrt<expression::Norm<Expr>> expr, size_t size) {
-		auto replacedExpr = maybeCache(expr, size);
+		auto replacedExpr = expr.maybeCache(*this, size);
 		checkSimplificationWorked(replacedExpr);
 		for (size_t i = 0; i < size; ++i) {
 			pointer[i] = replacedExpr.get(i);
@@ -526,59 +623,6 @@ private:
 	// This specific pattern should've been replaced
 	template<class Expr>
 	void checkSimplificationWorked(expression::Sqrt<expression::Norm<Expr>> expr) = delete;
-};
-
-/// Helper class for temporary storage, reserved up-front and tracked with values on the stack.
-template<typename V>
-struct Temporary {
-	// This is called if we don't have enough reserved space and end up allocating
-	std::function<void(size_t)> allocationWarning;
-	
-	void reserve(size_t size) {
-		assert(start == buffer);
-		
-		if (buffer) delete[] buffer;
-		start = buffer = new V[size];
-		end = buffer + size;
-	}
-	
-	// A chunk of temporary storage, valid as long as it's in scope on the stack.
-	struct StackScoped {
-		V *pointer;
-		
-		StackScoped(Temporary &temporary, size_t size) : pointer(temporary.start), temporary(temporary) {
-			temporary.start += size;
-			if (temporary.start > temporary.end) {
-				// OK, actually we ran out of temporary space, so allocate
-				pointer = new V[size];
-				// but we're not happy about it. >:(
-				temporary.allocationWarning(temporary.start - temporary.buffer);
-			}
-		}
-		StackScoped(const StackScoped &other) = delete; // no copy/move/etc.
-		~StackScoped() {
-			if (pointer >= temporary.buffer && pointer < temporary.end) {
-				assert(pointer <= temporary.start); // checks (although doesn't guarantee) that the storage wasn't re-allocated under our feet somehow
-				temporary.start = pointer;
-			} else {
-				// We ran out of space, so it was allocated just for this
-				delete[] pointer;
-			}
-		}
-		
-		operator V*() const {
-			return pointer;
-		}
-	private:
-		Temporary &temporary;
-	};
-
-	StackScoped scoped(size_t size) {
-		return {*this, size};
-	}
-private:
-	V *start = nullptr, *end = nullptr;
-	V *buffer = nullptr;
 };
 
 }}; // namespace
