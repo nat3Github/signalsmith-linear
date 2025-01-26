@@ -2,10 +2,11 @@
 #define SIGNALSMITH_AUDIO_LINEAR_H
 
 #include <cmath>
+#include <cassert>
 #include <complex>
 #include <array>
+#include <vector>
 #include <type_traits>
-#include <cassert>
 
 namespace signalsmith { namespace linear {
 
@@ -414,7 +415,6 @@ struct LinearImplBase {
 		return {pointer};
 	}
 
-	// TODO: instead of assignment living in the Writable***, have it in WritableExpression only, so that it still looks like a Readable*** for fill/simplify
 	// When a length is supplied, make it writable
 	template<typename V>
 	WritableExpression<WritableReal<V>> wrap(RealPointer<V> pointer, size_t size) {

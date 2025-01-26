@@ -7,6 +7,28 @@
 #include <vector>
 #include <random>
 
+template<class Data, typename V, size_t typeIndex>
+struct RunDataGetter;
+
+template<class Data, typename V>
+struct RunDataGetter<Data, V, 0> {
+	static V * get(Data &data, size_t index) {
+		return data.real(index);
+	}
+};
+template<class Data, typename V>
+struct RunDataGetter<Data, V, 1> {
+	static V * get(Data &data, size_t index) {
+		return data.positive(index);
+	}
+};
+template<class Data, typename V>
+struct RunDataGetter<Data, V, 2> {
+	static std::complex<V> * get(Data &data, size_t index) {
+		return data.complex(index);
+	}
+};
+
 template<typename Sample, size_t alignBytes=32>
 struct RunData {
 	using Complex = std::complex<Sample>;
@@ -79,6 +101,11 @@ struct RunData {
 		return complexes[index];
 	}
 	
+	template<int dataType>
+	auto get(size_t index) -> decltype(RunDataGetter<RunData, Sample, dataType>::get(*this, index)) {
+		return RunDataGetter<RunData, Sample, dataType>::get(*this, index);
+	}
+
 	double distance(const RunData<Sample> &other) const {
 		double error2 = 0;
 		

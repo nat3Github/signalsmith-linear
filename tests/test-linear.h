@@ -4,13 +4,14 @@
 
 #include <type_traits>
 
-template<class Op>
-struct OpVoidArBr {
+template<class Op, int typeA, int typeB>
+struct OpVoidAB {
 	Op op;
 
 	template<class Data>
 	void reference(Data &data) const {
-		auto a = data.real(0), b = data.real(1);
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1);
 		for (size_t i = 0; i < data.size; ++i) {
 			op.opRef(a[i], b[i]);
 		}
@@ -18,69 +19,33 @@ struct OpVoidArBr {
 
 	template<class L, class Data>
 	void linear(L &linear, Data &data) const {
-		op.op(linear.wrap(data.real(0), data.size), linear.wrap(data.real(1), data.size));
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1);
+		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size));
 	}
 };
 template<class Op>
-struct OpVoidArBrp {
+using OpVoidArBr = OpVoidAB<Op, 0, 0>;
+template<class Op>
+using OpVoidArBp = OpVoidAB<Op, 0, 1>;
+template<class Op>
+using OpVoidArBc = OpVoidAB<Op, 0, 2>;
+template<class Op>
+using OpVoidAcBr = OpVoidAB<Op, 2, 0>;
+template<class Op>
+using OpVoidAcBp = OpVoidAB<Op, 2, 1>;
+template<class Op>
+using OpVoidAcBc = OpVoidAB<Op, 2, 2>;
+
+template<class Op, int typeA, int typeB, int typeC>
+struct OpVoidABC {
 	Op op;
 
 	template<class Data>
 	void reference(Data &data) const {
-		auto a = data.real(0), b = data.positive(0);
-		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b[i]);
-		}
-	}
-
-	template<class L, class Data>
-	void linear(L &linear, Data &data) const {
-		op.op(linear.wrap(data.real(0), data.size), linear.wrap(data.positive(0), data.size));
-	}
-};
-template<class Op>
-struct OpVoidArBc {
-	Op op;
-
-	template<class Data>
-	void reference(Data &data) const {
-		auto a = data.real(0);
-		auto b = data.complex(0);
-		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b[i]);
-		}
-	}
-
-	template<class L, class Data>
-	void linear(L &linear, Data &data) const {
-		op.op(linear.wrap(data.real(0), data.size), linear.wrap(data.complex(0), data.size));
-	}
-};
-template<class Op>
-struct OpVoidAcBc {
-	Op op;
-
-	template<class Data>
-	void reference(Data &data) const {
-		auto a = data.complex(0);
-		auto b = data.complex(1);
-		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b[i]);
-		}
-	}
-
-	template<class L, class Data>
-	void linear(L &linear, Data &data) const {
-		op.op(linear.wrap(data.complex(0), data.size), linear.wrap(data.complex(1), data.size));
-	}
-};
-template<class Op>
-struct OpVoidArBrCr {
-	Op op;
-
-	template<class Data>
-	void reference(Data &data) const {
-		auto a = data.real(0), b = data.real(1), c = data.real(2);
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1);
+		auto c = data.template get<typeC>(2);
 		for (size_t i = 0; i < data.size; ++i) {
 			op.opRef(a[i], b[i], c[i]);
 		}
@@ -88,17 +53,40 @@ struct OpVoidArBrCr {
 
 	template<class L, class Data>
 	void linear(L &linear, Data &data) const {
-		auto a = data.real(0), b = data.real(1), c = data.real(2);
-		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size), linear.wrap(c, data.size));
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1);
+		auto c = data.template get<typeC>(2);
+		size_t size = data.size;
+		op.op(linear(a, size), linear(b, size), linear(c, size));
 	}
 };
 template<class Op>
-struct OpVoidArBrCrDr {
+using OpVoidArBrCr = OpVoidABC<Op, 0, 0, 0>;
+template<class Op>
+using OpVoidArBrCc = OpVoidABC<Op, 0, 0, 2>;
+template<class Op>
+using OpVoidArBcCr = OpVoidABC<Op, 0, 2, 0>;
+template<class Op>
+using OpVoidArBcCc = OpVoidABC<Op, 0, 2, 2>;
+template<class Op>
+using OpVoidAcBrCr = OpVoidABC<Op, 2, 0, 0>;
+template<class Op>
+using OpVoidAcBrCc = OpVoidABC<Op, 2, 0, 2>;
+template<class Op>
+using OpVoidAcBcCr = OpVoidABC<Op, 2, 2, 0>;
+template<class Op>
+using OpVoidAcBcCc = OpVoidABC<Op, 2, 2, 2>;
+
+template<class Op, int typeA, int typeB, int typeC, int typeD>
+struct OpVoidABCD {
 	Op op;
 
 	template<class Data>
 	void reference(Data &data) const {
-		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3);
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1);
+		auto c = data.template get<typeC>(2);
+		auto d = data.template get<typeD>(3);
 		for (size_t i = 0; i < data.size; ++i) {
 			op.opRef(a[i], b[i], c[i], d[i]);
 		}
@@ -106,28 +94,47 @@ struct OpVoidArBrCrDr {
 
 	template<class L, class Data>
 	void linear(L &linear, Data &data) const {
-		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3);
-		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size), linear.wrap(c, data.size), linear.wrap(d, data.size));
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1);
+		auto c = data.template get<typeC>(2);
+		auto d = data.template get<typeD>(3);
+		size_t size = data.size;
+		op.op(linear(a, size), linear(b, size), linear(c, size), linear(d, size));
 	}
 };
+
 template<class Op>
-struct OpVoidArBrCrDrEr {
-	Op op;
-
-	template<class Data>
-	void reference(Data &data) const {
-		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3), e = data.real(4);
-		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b[i], c[i], d[i], e[i]);
-		}
-	}
-
-	template<class L, class Data>
-	void linear(L &linear, Data &data) const {
-		auto a = data.real(0), b = data.real(1), c = data.real(2), d = data.real(3), e = data.real(4);
-		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size), linear.wrap(c, data.size), linear.wrap(d, data.size), linear.wrap(e, data.size));
-	}
-};
+using OpVoidArBrCrDr = OpVoidABCD<Op, 0, 0, 0, 0>;
+template<class Op>
+using OpVoidArBrCrDc = OpVoidABCD<Op, 0, 0, 0, 2>;
+template<class Op>
+using OpVoidArBrCcDr = OpVoidABCD<Op, 0, 0, 2, 0>;
+template<class Op>
+using OpVoidArBrCcDc = OpVoidABCD<Op, 0, 0, 2, 2>;
+template<class Op>
+using OpVoidArBcCrDr = OpVoidABCD<Op, 0, 2, 0, 0>;
+template<class Op>
+using OpVoidArBcCrDc = OpVoidABCD<Op, 0, 2, 0, 2>;
+template<class Op>
+using OpVoidArBcCcDr = OpVoidABCD<Op, 0, 2, 2, 0>;
+template<class Op>
+using OpVoidArBcCcDc = OpVoidABCD<Op, 0, 2, 2, 2>;
+template<class Op>
+using OpVoidAcBrCrDr = OpVoidABCD<Op, 2, 0, 0, 0>;
+template<class Op>
+using OpVoidAcBrCrDc = OpVoidABCD<Op, 2, 0, 0, 2>;
+template<class Op>
+using OpVoidAcBrCcDr = OpVoidABCD<Op, 2, 0, 2, 0>;
+template<class Op>
+using OpVoidAcBrCcDc = OpVoidABCD<Op, 2, 0, 2, 2>;
+template<class Op>
+using OpVoidAcBcCrDr = OpVoidABCD<Op, 2, 2, 0, 0>;
+template<class Op>
+using OpVoidAcBcCrDc = OpVoidABCD<Op, 2, 2, 0, 2>;
+template<class Op>
+using OpVoidAcBcCcDr = OpVoidABCD<Op, 2, 2, 2, 0>;
+template<class Op>
+using OpVoidAcBcCcDc = OpVoidABCD<Op, 2, 2, 2, 2>;
 
 struct TestLinear {
 	static const int bigPlotWidth = 300, bigPlotHeight = 250;
@@ -155,6 +162,7 @@ struct TestLinear {
 		}
 	}
 
+	std::string prefix;
 	signalsmith::plot::Figure figure;
 	signalsmith::plot::Figure tinyFigure;
 	struct Config {
@@ -176,7 +184,8 @@ struct TestLinear {
 	}
 	signalsmith::plot::Legend *legend;
 	
-	TestLinear(int maxSize, double benchmarkSeconds) : maxSize(maxSize), benchmarkSeconds(benchmarkSeconds) {
+	TestLinear(int maxSize, double benchmarkSeconds, std::string name="linear") : maxSize(maxSize), benchmarkSeconds(benchmarkSeconds), prefix(name) {
+		std::cout << name << ":\n";
 		addConfig(2, 0, "float (Linear)");
 		addConfig(1, 0, "float (fallback)");
 		addConfig(0, 0, "float (ref)");
@@ -189,8 +198,8 @@ struct TestLinear {
 	TestLinear(const TestLinear &other) = delete;
 	~TestLinear() {
 		if (benchmarkSeconds) {
-			figure.write("linear.svg");
-			tinyFigure.write("linear-comparison.svg");
+			figure.write(prefix + "-all.svg");
+			tinyFigure.write(prefix + "-comparison.svg");
 		}
 	}
 
@@ -350,7 +359,7 @@ struct TestLinear {
 		std::cout << "\t                                \r" << std::flush;
 		
 		if (benchmarkSeconds) {
-			opPlot.write("op-" + plotName + ".svg");
+			opPlot.write(prefix + "-expr-" + plotName + ".svg");
 		}
 	}
 };
@@ -437,37 +446,80 @@ TEST_EXPR4(SubMul2, a = (b - c)*d, a = (b - c)*d);
 
 void testLinear(int maxSize, double benchmarkSeconds) {
 	std::cout << "\nExpressions\n-----------\n";
-	TestLinear test(maxSize, benchmarkSeconds);
+	{
+		TestLinear test(maxSize, benchmarkSeconds, "real");
+		
+		test.addOp<OpVoidArBr<Assign>>("Assign");
+		test.addOp<OpVoidArBr<Abs>>("Abs");
+		
+		test.addOp<OpVoidArBrCr<Add>>("Add");
+		test.addOp<OpVoidArBrCr<Sub>>("Sub");
+		test.addOp<OpVoidArBrCr<Mul>>("Mul");
+		test.addOp<OpVoidArBrCr<Div>>("Div");
 
-	test.addOp<OpVoidArBrCrDr<MulAdd>>("MulAddR");
-	test.addOp<OpVoidArBrCrDr<MulAdd2>>("MulAddR2");
-	test.addOp<OpVoidArBrCrDr<AddMul>>("AddMulR");
-	test.addOp<OpVoidArBrCrDr<AddMul2>>("AddMul2R");
-	test.addOp<OpVoidArBrCrDr<MulSub>>("MulSubR");
-	test.addOp<OpVoidArBrCrDr<MulSub2>>("MulSubR2");
-	test.addOp<OpVoidArBrCrDr<SubMul>>("SubMulR");
-	test.addOp<OpVoidArBrCrDr<SubMul2>>("SubMul2R");
+		test.addOp<OpVoidArBr<Exp>>("Exp");
+		test.addOp<OpVoidArBr<Exp2>>("Exp2");
+		test.addOp<OpVoidArBp<Log>>("Log");
+		test.addOp<OpVoidArBp<Log2>>("Log2");
+		test.addOp<OpVoidArBp<Log10>>("Log10");
+		test.addOp<OpVoidArBp<Sqrt>>("Sqrt");
+		test.addOp<OpVoidArBr<Cbrt>>("Cbrt");
+		test.addOp<OpVoidArBr<Floor>>("Floor");
+		test.addOp<OpVoidArBr<MinusFloor>>("MinusFloor");
+	}
+	{
+		TestLinear test(maxSize, benchmarkSeconds, "complex");
 
-	test.addOp<OpVoidArBr<Assign>>("AssignR");
-	test.addOp<OpVoidArBrCr<Add>>("AddR");
-	test.addOp<OpVoidArBrCr<Sub>>("SubR");
-	test.addOp<OpVoidArBrCr<Mul>>("MulR");
-	test.addOp<OpVoidArBrCr<Div>>("DivR");
-	test.addOp<OpVoidArBr<Abs>>("AbsR");
-	test.addOp<OpVoidArBc<Abs>>("AbsC", "for complex b");
-	test.addOp<OpVoidArBc<Norm>>("NormC");
-	test.addOp<OpVoidArBc<SqrtNorm>>("SqrtNormC");
-	test.addOp<OpVoidAcBc<Conj>>("ConjC");
-	test.addOp<OpVoidArBc<Real>>("Real");
-	test.addOp<OpVoidArBc<Imag>>("Imag");
-	test.addOp<OpVoidArBc<Arg>>("Arg");
-	test.addOp<OpVoidArBr<Exp>>("ExpR");
-	test.addOp<OpVoidArBr<Exp2>>("Exp2R");
-	test.addOp<OpVoidArBrp<Log>>("LogR");
-	test.addOp<OpVoidArBrp<Log2>>("Log2R");
-	test.addOp<OpVoidArBrp<Log10>>("Log10R");
-	test.addOp<OpVoidArBrp<Sqrt>>("Sqrt");
-	test.addOp<OpVoidArBr<Cbrt>>("Cbrt");
-	test.addOp<OpVoidArBr<Floor>>("Floor");
-	test.addOp<OpVoidArBr<MinusFloor>>("MinusFloor");
+		test.addOp<OpVoidAcBcCc<Add>>("Add");
+		test.addOp<OpVoidAcBcCc<Sub>>("Sub");
+		test.addOp<OpVoidAcBcCc<Mul>>("Mul");
+		test.addOp<OpVoidAcBcCc<Div>>("Div");
+
+		test.addOp<OpVoidAcBc<Exp>>("Exp");
+		test.addOp<OpVoidAcBc<Log>>("Log");
+		test.addOp<OpVoidAcBc<Log10>>("Log10");
+	}
+	{
+		TestLinear test(maxSize, benchmarkSeconds, "mixed");
+		test.addOp<OpVoidAcBr<Assign>>("AssignCR");
+		
+		test.addOp<OpVoidAcBrCr<Add>>("AddCRR");
+		test.addOp<OpVoidAcBcCr<Add>>("AddCCR");
+		test.addOp<OpVoidAcBrCc<Add>>("AddCRC");
+		
+		test.addOp<OpVoidAcBrCr<Sub>>("SubCRR");
+		test.addOp<OpVoidAcBcCr<Sub>>("SubCCR");
+		test.addOp<OpVoidAcBrCc<Sub>>("SubCRC");
+
+		test.addOp<OpVoidAcBrCr<Mul>>("MulCRR");
+		test.addOp<OpVoidAcBcCr<Mul>>("MulCCR");
+		test.addOp<OpVoidAcBrCc<Mul>>("MulCRC");
+
+		test.addOp<OpVoidAcBrCr<Div>>("DivCRR");
+		test.addOp<OpVoidAcBcCr<Div>>("DivCCR");
+		test.addOp<OpVoidAcBrCc<Div>>("DivCRC");
+	}
+
+	{
+		TestLinear test(maxSize, benchmarkSeconds, "complex2real");
+		test.addOp<OpVoidArBc<Norm>>("NormC");
+		test.addOp<OpVoidArBc<Abs>>("AbsC", "for complex b");
+		test.addOp<OpVoidArBc<SqrtNorm>>("SqrtNormC");
+		test.addOp<OpVoidAcBc<Conj>>("ConjC");
+		test.addOp<OpVoidArBc<Real>>("Real");
+		test.addOp<OpVoidArBc<Imag>>("Imag");
+		test.addOp<OpVoidArBc<Arg>>("Arg");
+	}
+	{
+		TestLinear test(maxSize, benchmarkSeconds, "compound");
+		
+		test.addOp<OpVoidArBrCrDr<MulAdd>>("MulAddR");
+		test.addOp<OpVoidArBrCrDr<MulAdd2>>("MulAddR2");
+		test.addOp<OpVoidArBrCrDr<AddMul>>("AddMulR");
+		test.addOp<OpVoidArBrCrDr<AddMul2>>("AddMul2R");
+		test.addOp<OpVoidArBrCrDr<MulSub>>("MulSubR");
+		test.addOp<OpVoidArBrCrDr<MulSub2>>("MulSubR2");
+		test.addOp<OpVoidArBrCrDr<SubMul>>("SubMulR");
+		test.addOp<OpVoidArBrCrDr<SubMul2>>("SubMul2R");
+	}
 }
