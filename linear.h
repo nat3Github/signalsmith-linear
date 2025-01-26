@@ -335,26 +335,30 @@ struct Temporary {
 		end = alignedBuffer + size;
 	}
 
-	/// Valid until the next call to .clear() or .reserve()
-	V * operator()(size_t size) {
-		V *result = start;
-		V *newStart = start + size;
-		if (newStart > end) {
-			// OK, actually we ran out of temporary space, so allocate
-			fallbacks.emplace_back(size + extraAlignmentItems);
-			result = nextAligned(fallbacks.back().data());
-			// but we're not happy about it. >:(
-			if (allocationWarning) allocationWarning(newStart - buffer);
-		}
-		start = nextAligned(newStart);
-		return result;
-	}
-
 	void clear() {
 		start = alignedBuffer;
 		fallbacks.resize(0);
 		fallbacks.shrink_to_fit();
 	}
+
+	// You should have one of these every time you're using the temporary storage
+	struct Scoped {
+		Scoped(Temporary &temporary) : temporary(temporary), restoreStart(temporary.start), fallbackSize(temporary.fallbacks.size()) {}
+		
+		~Scoped() {
+			temporary.start = restoreStart;
+			temporary.fallbacks.resize(fallbackSize);
+		}
+		
+		V * operator()(size_t size) {
+			return temporary.getChunk(size);
+		}
+
+	private:
+		Temporary &temporary;
+		V *restoreStart;
+		size_t fallbackSize;
+	};
 
 private:
 	static constexpr size_t extraAlignmentItems = alignBytes/sizeof(V);
@@ -367,62 +371,97 @@ private:
 	V *buffer = nullptr, *alignedBuffer = nullptr;
 
 	std::vector<std::vector<V>> fallbacks;
+
+	/// Valid until the next call to .clear() or .reserve()
+	V * getChunk(size_t size) {
+		V *result = start;
+		V *newStart = start + size;
+		if (newStart > end) {
+			// OK, actually we ran out of temporary space, so allocate
+			fallbacks.emplace_back(size + extraAlignmentItems);
+			result = nextAligned(fallbacks.back().data());
+			// but we're not happy about it. >:(
+			if (allocationWarning) allocationWarning(newStart - buffer);
+		}
+		start = nextAligned(newStart);
+		return result;
+	}
 };
 
-template<class Linear, size_t alignBytes=0>
+template<class Linear, size_t alignBytes=1>
 struct CachedResults {
-	Temporary<float, alignBytes> floats;
-	Temporary<double, alignBytes> doubles;
-	
+	using TemporaryFloats = Temporary<float, alignBytes>;
+	using TemporaryDoubles = Temporary<double, alignBytes>;
+
 	template<typename V>
 	using WritableReal = typename Linear::template WritableReal<V>;
 	
 	CachedResults(Linear &linear) : linear(linear) {}
-
-	struct RetainScope {
-		RetainScope(CachedResults &cached) : cached(cached) {
-			++cached.depth;
+	
+	struct ScopedFloat : public TemporaryFloats::Scoped {
+		ScopedFloat(Linear &linear, TemporaryFloats &temporary) : TemporaryFloats::Scoped(temporary), linear(linear) {}
+		
+		template<class Expr>
+		ConstRealPointer<float> real(Expr expr, size_t size) {
+			auto chunk = (*this)(size);
+			linear.fill(chunk, expr, size);
+			return chunk;
 		}
-		~RetainScope() {
-			if (!--cached.depth) {
-				cached.floats.clear();
-				cached.doubles.clear();
-			}
+		ConstRealPointer<float> real(expression::ReadableReal<float> expr, size_t) {
+			return expr.pointer;
+		}
+		ConstRealPointer<float> real(WritableReal<float> expr, size_t) {
+			return expr.pointer;
 		}
 	private:
-		CachedResults &cached;
+		Linear &linear;
 	};
-	RetainScope scope() {
-		return {*this};
+	ScopedFloat floatScope() {
+		return {linear, floats};
+	}
+	void reserveFloats(size_t size) {
+		floats.reserve(size);
+	}
+	template<class Fn>
+	void reserveFloats(size_t size, Fn &&allocationWarning) {
+		floats.reserve(size);
+		floats.allocationWarning = allocationWarning;
 	}
 
-	template<class Expr>
-	ConstRealPointer<float> realFloat(Expr expr, size_t size) {
-		auto chunk = floats(size);
-		linear.fill(chunk, expr, size);
-		return chunk;
+	struct ScopedDouble : public TemporaryDoubles::Scoped {
+		ScopedDouble(Linear &linear, TemporaryDoubles &temporary) : TemporaryDoubles::Scoped(temporary), linear(linear) {}
+		
+		template<class Expr>
+		ConstRealPointer<double> real(Expr expr, size_t size) {
+			auto chunk = (*this)(size);
+			linear.fill(chunk, expr, size);
+			return chunk;
+		}
+		ConstRealPointer<double> real(expression::ReadableReal<double> expr, size_t) {
+			return expr.pointer;
+		}
+		ConstRealPointer<double> real(WritableReal<double> expr, size_t) {
+			return expr.pointer;
+		}
+	private:
+		Linear &linear;
+	};
+	ScopedDouble doubleScope() {
+		return {linear, doubles};
 	}
-	ConstRealPointer<float> realFloat(expression::ReadableReal<float> expr, size_t) {
-		return expr.pointer;
+	void reserveDoubles(size_t size) {
+		doubles.reserve(size);
 	}
-	ConstRealPointer<float> realFloat(WritableReal<float> expr, size_t) {
-		return expr.pointer;
+	template<class Fn>
+	void reserveDoubles(size_t size, Fn &&allocationWarning) {
+		doubles.reserve(size);
+		doubles.allocationWarning = allocationWarning;
 	}
-	template<class Expr>
-	ConstRealPointer<double> realDouble(Expr expr, size_t size) {
-		auto chunk = doubles(size);
-		linear.fill(chunk, expr, size);
-		return chunk;
-	}
-	ConstRealPointer<double> realDouble(expression::ReadableReal<double> expr, size_t) {
-		return expr.pointer;
-	}
-	ConstRealPointer<double> realDouble(WritableReal<double> expr, size_t) {
-		return expr.pointer;
-	}
+	
 private:
+	TemporaryFloats floats;
+	TemporaryDoubles doubles;
 	Linear &linear;
-	int depth = 0;
 };
 
 template<bool useLinear=true>
@@ -588,9 +627,12 @@ struct LinearImpl : public LinearImplBase<useLinear> {
 	// Override .fill() for specific pointer/expressions which you can do quickly.  Calling `cached.realFloat()` etc. will call back to .fill()
 	template<class Expr>
 	void fill(RealPointer<float> pointer, expression::Sqrt<expression::Norm<Expr>> expr, size_t size) {
+		auto floats = cached.floatScope();
+		
 		auto normExpr = expr.a;
-		auto array = cached.realFloat(normExpr, size);
-		// The idea is to use an existing fast function for this
+		auto array = floats.real(normExpr, size);
+		
+		// The idea is to use an existing fast function, but this is an example
 		for (size_t i = 0; i < size; ++i) {
 			pointer[i] = std::sqrt(array[i]);
 		}
@@ -598,10 +640,10 @@ struct LinearImpl : public LinearImplBase<useLinear> {
 	
 	template<typename V>
 	void reserve(size_t) {}
-	// This makes sure we don't allocate (unless there's a complicated expression with multiple sqrts in it!)
+	// This makes sure we don't allocate - unless there's an expression with multiple sqrts in it!
 	template<>
 	void reserve<float>(size_t size) {
-		cached.floats.reserve(size*4);
+		cached.reserveFloats(size);
 	}
 private:
 	CachedResults<LinearImpl, 32> cached;

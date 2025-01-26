@@ -5,13 +5,26 @@
 #include <vector>
 #include <cmath>
 
-#include "./linear.h"
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
 namespace signalsmith { namespace linear {
+
+namespace _impl {
+	template<class V>
+	void complexMul(std::complex<V> *a, const std::complex<V> *b, const std::complex<V> *c, size_t size) {
+		for (size_t i = 0; i < size; ++i) {
+			a[i] = b[i]*c[i];
+		}
+	}
+	template<class V>
+	void complexMulConj(std::complex<V> *a, const std::complex<V> *b, const std::complex<V> *c, size_t size) {
+		for (size_t i = 0; i < size; ++i) {
+			a[i] = b[i]*std::conj(c[i]);
+		}
+	}
+}
 
 /// Extremely simple and portable power-of-2 FFT
 template<typename Sample>
@@ -89,9 +102,8 @@ private:
 
 /// A power-of-2 only FFT, specialised with platform-specific fast implementations where available
 template<typename Sample>
-struct Pow2FFT : private ::signalsmith::linear::Linear {
+struct Pow2FFT {
 	using Complex = std::complex<Sample>;
-	using Linear = ::signalsmith::linear::Linear;
 	
 	Pow2FFT(size_t size=0) {
 		resize(size);
@@ -141,10 +153,8 @@ private:
 
 /// An FFT which can be computed in chunks
 template<typename Sample>
-struct SplitFFT : public Pow2FFT<Sample> {
+struct SplitFFT {
 	using Complex = std::complex<Sample>;
-	using InnerFFT = Pow2FFT<Sample>;
-	using Linear = typename InnerFFT::Linear;
 	static constexpr size_t maxSplit = 4;
 	static constexpr size_t minInnerSize = 32;
 	
@@ -170,7 +180,7 @@ struct SplitFFT : public Pow2FFT<Sample> {
 			outerSize /= 2;
 		}
 		tmpFreq.resize(innerSize);
-		InnerFFT::resize(innerSize);
+		innerFFT.resize(innerSize);
 		
 		outerTwiddles.resize(innerSize*outerSize);
 		for (size_t i = 0; i < innerSize; ++i) {
@@ -224,6 +234,9 @@ struct SplitFFT : public Pow2FFT<Sample> {
 		}
 	}
 private:
+	using InnerFFT = Pow2FFT<Sample>;
+	InnerFFT innerFFT;
+
 	size_t innerSize, outerSize;
 	std::vector<Complex> tmpFreq;
 	std::vector<Complex> outerTwiddles;
@@ -237,17 +250,17 @@ private:
 		switch (stepType) {
 			case (StepType::firstWithFinal): {
 				if (inverse) {
-					InnerFFT::ifftStrideFreq(outerSize, time, freq);
+					innerFFT.ifftStrideFreq(outerSize, time, freq);
 				} else {
-					InnerFFT::fftStrideTime(outerSize, time, freq);
+					innerFFT.fftStrideTime(outerSize, time, freq);
 				}
 				break;
 			}
 			case (StepType::firstWithoutFinal): {
 				if (inverse) {
-					InnerFFT::ifftStrideFreq(outerSize, time, freq);
+					innerFFT.ifftStrideFreq(outerSize, time, freq);
 				} else {
-					InnerFFT::fftStrideTime(outerSize, time, freq);
+					innerFFT.fftStrideTime(outerSize, time, freq);
 				}
 				// We're doing the DFT as part of these passes, so duplicate this one
 				for (size_t s = 1; s < outerSize; ++s) {
@@ -260,25 +273,25 @@ private:
 			}
 			case (StepType::middleWithFinal): {
 				if (inverse) {
-					InnerFFT::ifftStrideFreq(outerSize, time + s, tmpFreq.data());
+					innerFFT.ifftStrideFreq(outerSize, time + s, tmpFreq.data());
 				} else {
-					InnerFFT::fftStrideTime(outerSize, time + s, tmpFreq.data());
+					innerFFT.fftStrideTime(outerSize, time + s, tmpFreq.data());
 				}
 				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We'll do the final DFT in-place, as extra passes
 				if (inverse) {
-					Linear::wrap(freq + s*innerSize, innerSize) = Linear::wrap(tmpFreq)*Linear::wrap(twiddles).conj();
+					_impl::complexMulConj(freq + s*innerSize, tmpFreq.data(), twiddles, innerSize);
 				} else {
-					Linear::wrap(freq + s*innerSize, innerSize) = Linear::wrap(tmpFreq)*Linear::wrap(twiddles);
+					_impl::complexMul(freq + s*innerSize, tmpFreq.data(), twiddles, innerSize);
 				}
 				break;
 			}
 			case (StepType::middleWithoutFinal): {
 				if (inverse) {
-					InnerFFT::ifftStrideFreq(outerSize, time + s, tmpFreq.data());
+					innerFFT.ifftStrideFreq(outerSize, time + s, tmpFreq.data());
 				} else {
-					InnerFFT::fftStrideTime(outerSize, time + s, tmpFreq.data());
+					innerFFT.fftStrideTime(outerSize, time + s, tmpFreq.data());
 				}
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 

@@ -249,6 +249,34 @@ using OpVoidAcBcCcDr = OpVoidABCD<Op, 2, 2, 2, 0>;
 template<class Op>
 using OpVoidAcBcCcDc = OpVoidABCD<Op, 2, 2, 2, 2>;
 
+template<class Op, int typeA, int typeB, int typeC, int typeD, int typeE>
+struct OpVoidABCDE {
+	Op op;
+
+	template<class Data>
+	void reference(Data &data) const {
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1);
+		auto c = data.template get<typeC>(2);
+		auto d = data.template get<typeD>(3);
+		auto e = data.template get<typeE>(4);
+		for (size_t i = 0; i < data.size; ++i) {
+			op.opRef(a[i], b[i], c[i], d[i], e[i]);
+		}
+	}
+
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1);
+		auto c = data.template get<typeC>(2);
+		auto d = data.template get<typeD>(3);
+		auto e = data.template get<typeE>(4);
+		size_t size = data.size;
+		op.op(linear(a, size), linear(b, size), linear(c, size), linear(d, size), linear(e, size));
+	}
+};
+
 struct TestLinear {
 	static const int bigPlotWidth = 300, bigPlotHeight = 250;
 	static const int tinyPlotWidth = 80, tinyPlotHeight = 80;
@@ -556,6 +584,12 @@ TEST_EXPR4(MulSub, a = b*c - d, a = b*c - d);
 TEST_EXPR4(MulSub2, a = b - c*d, a = b - c*d);
 TEST_EXPR4(SubMul, a = b*(c - d), a = b*(c - d));
 TEST_EXPR4(SubMul2, a = (b - c)*d, a = (b - c)*d);
+TEST_EXPR5(AddAddMul, a = (b + c)*(d + e), a = (b + c)*(d + e));
+TEST_EXPR5(AddSubMul, a = (b + c)*(d - e), a = (b + c)*(d - e));
+TEST_EXPR5(SubAddMul, a = (b - c)*(d + e), a = (b - c)*(d + e));
+TEST_EXPR5(SubSubMul, a = (b - c)*(d - e), a = (b - c)*(d - e));
+TEST_EXPR5(MulMulAdd, a = b*c + d*e, a = b*c + d*e);
+TEST_EXPR5(MulMulSub, a = b*c - d*e, a = b*c - d*e);
 
 void testLinear(int maxSize, double benchmarkSeconds) {
 	std::cout << "\nExpressions\n-----------\n";
@@ -650,7 +684,7 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 		test.addOp<OpVoidArBc<Arg>>("Arg");
 	}
 	{
-		TestLinear test(maxSize, benchmarkSeconds, "compound");
+		TestLinear test(maxSize, benchmarkSeconds, "realCompound");
 		
 		test.addOp<OpVoidArBrCrDr<MulAdd>>("MulAddR");
 		test.addOp<OpVoidArBrCrDr<MulAdd2>>("MulAddR2");
@@ -660,5 +694,12 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 		test.addOp<OpVoidArBrCrDr<MulSub2>>("MulSubR2");
 		test.addOp<OpVoidArBrCrDr<SubMul>>("SubMulR");
 		test.addOp<OpVoidArBrCrDr<SubMul2>>("SubMul2R");
+		
+		test.addOp<OpVoidABCDE<AddAddMul, 0, 0, 0, 0, 0>>("AddAddMul");
+		test.addOp<OpVoidABCDE<AddSubMul, 0, 0, 0, 0, 0>>("AddSubMul");
+		test.addOp<OpVoidABCDE<SubAddMul, 0, 0, 0, 0, 0>>("SubAddMul");
+		test.addOp<OpVoidABCDE<SubSubMul, 0, 0, 0, 0, 0>>("SubSubMul");
+		test.addOp<OpVoidABCDE<MulMulAdd, 0, 0, 0, 0, 0>>("MulMulAdd");
+		test.addOp<OpVoidABCDE<MulMulSub, 0, 0, 0, 0, 0>>("MulMulSub");
 	}
 }
