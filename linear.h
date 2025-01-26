@@ -63,6 +63,19 @@ namespace expression {
 		return std::min<size_t>(a, b);
 	}
 
+	// Expressions that just return a constant value
+	template<typename V>
+	struct Constant {
+		EXPRESSION_NAME(Constant, "V");
+		V value;
+
+		Constant(V value) : value(value) {}
+		
+		V get(std::ptrdiff_t) const {
+			return value;
+		}
+	};
+
 	// Expressions that just read from a pointer
 	template<typename V>
 	struct ReadableReal {
@@ -139,6 +152,14 @@ namespace expression {
 } /*exit expression:: namespace */ \
 template<class A, class B> \
 const Expression<expression::Name<A, B>> operator OP(const Expression<A> &a, const Expression<B> &b) { \
+	return {a, b}; \
+} \
+template<class A, class B> \
+const Expression<expression::Name<expression::Constant<A>, B>> operator OP(const expression::Constant<A> &a, const Expression<B> &b) { \
+	return {a, b}; \
+} \
+template<class A, class B> \
+const Expression<expression::Name<A, expression::Constant<B>>> operator OP(const Expression<A> &a, const expression::Constant<B> &b) { \
 	return {a, b}; \
 } \
 namespace expression {
@@ -262,12 +283,12 @@ struct WritableExpression : public Expression<BaseExpr> {
 
 	template<class Expr>
 	WritableExpression & operator=(const Expr &expr) {
-		BaseExpr::operator=(expr);
+		this->linear.fill(this->pointer, expr, this->size);
 		return *this;
 	}
 
 	WritableExpression & operator=(const WritableExpression &expr) {
-		BaseExpr::operator=(expr);
+		this->linear.fill(this->pointer, expr, this->size);
 		return *this;
 	}
 };
@@ -325,6 +346,62 @@ private:
 	std::vector<std::vector<V>> fallbacks;
 };
 
+template<class Linear, size_t alignBytes=0>
+struct CachedResults {
+	Temporary<float, alignBytes> floats;
+	Temporary<double, alignBytes> doubles;
+	
+	template<typename V>
+	using WritableReal = typename Linear::template WritableReal<V>;
+	
+	CachedResults(Linear &linear) : linear(linear) {}
+
+	struct RetainScope {
+		RetainScope(CachedResults &cached) : cached(cached) {
+			++cached.depth;
+		}
+		~RetainScope() {
+			if (!--cached.depth) {
+				cached.floats.clear();
+				cached.doubles.clear();
+			}
+		}
+	private:
+		CachedResults &cached;
+	};
+	RetainScope scope() {
+		return {*this};
+	}
+
+	template<class Expr>
+	ConstRealPointer<float> realFloat(Expr expr, size_t size) {
+		auto chunk = floats(size);
+		linear.fill(chunk, expr, size);
+		return chunk;
+	}
+	ConstRealPointer<float> realFloat(expression::ReadableReal<float> expr, size_t) {
+		return expr.pointer;
+	}
+	ConstRealPointer<float> realFloat(WritableReal<float> expr, size_t) {
+		return expr.pointer;
+	}
+	template<class Expr>
+	ConstRealPointer<double> realDouble(Expr expr, size_t size) {
+		auto chunk = doubles(size);
+		linear.fill(chunk, expr, size);
+		return chunk;
+	}
+	ConstRealPointer<double> realDouble(expression::ReadableReal<double> expr, size_t) {
+		return expr.pointer;
+	}
+	ConstRealPointer<double> realDouble(WritableReal<double> expr, size_t) {
+		return expr.pointer;
+	}
+private:
+	Linear &linear;
+	int depth = 0;
+};
+
 template<bool useLinear=true>
 struct LinearImplBase {
 	using Linear = LinearImpl<useLinear>;
@@ -346,12 +423,6 @@ struct LinearImplBase {
 			return {pointer};
 		}
 		
-		template<class Expr>
-		WritableReal & operator=(Expression<Expr> expr) {
-			linear.fill(pointer, expr, size);
-			return *this;
-		}
-
 		V get(std::ptrdiff_t i) const {
 			return pointer[i];
 		}
@@ -366,12 +437,6 @@ struct LinearImplBase {
 
 		operator expression::ReadableComplex<V>() const {
 			return {pointer};
-		}
-
-		template<class Expr>
-		WritableComplex & operator=(Expression<Expr> expr) {
-			linear.fill(pointer, expr, size);
-			return *this;
 		}
 
 		std::complex<V> get(std::ptrdiff_t i) const {
@@ -390,17 +455,11 @@ struct LinearImplBase {
 			return {pointer};
 		}
 
-		template<class Expr>
-		WritableSplit & operator=(Expression<Expr> expr) {
-			linear.fill(pointer, expr, size);
-			return *this;
-		}
-
 		std::complex<V> get(std::ptrdiff_t i) const {
 			return {pointer.real[i], pointer.imag[i]};
 		}
 	};
-	
+
 	// Wrap a pointer as an expression
 	template<typename V>
 	Expression<expression::ReadableReal<V>> wrap(ConstRealPointer<V> pointer) {
@@ -463,17 +522,10 @@ struct LinearImplBase {
 		return wrap(std::forward<Args>(args)...);
 	}
 
-	// If there are fast ways to compute specific expressions, this lets us store that result in temporary space, and then return a pointer expression
-	template<class Expr>
-	Expr maybeCache(const Expr &expr, size_t size) {
-		return expr;
-	}
-
 	template<class Pointer, class Expr>
 	void fill(Pointer pointer, Expr expr, size_t size) {
-		auto maybeCached = self().maybeCache(expr, size);
 		for (size_t i = 0; i < size; ++i) {
-			pointer[i] = maybeCached.get(i);
+			pointer[i] = expr.get(i);
 		}
 	}
 
@@ -491,59 +543,6 @@ protected:
 	Linear & self() {
 		return *(Linear *)this;
 	}
-
-	template<size_t alignBytes=0>
-	struct CachedResults {
-		Temporary<float, alignBytes> floats;
-		Temporary<double, alignBytes> doubles;
-		
-		CachedResults(Linear &linear) : linear(linear) {}
-
-		struct RetainScope {
-			RetainScope(CachedResults &cached) : cached(cached) {
-				++cached.depth;
-			}
-			~RetainScope() {
-				if (!--cached.depth) {
-					cached.floats.clear();
-					cached.doubles.clear();
-				}
-			}
-		private:
-			CachedResults &cached;
-		};
-		RetainScope scope() {
-			return {*this};
-		}
-
-		template<class Expr>
-		ConstRealPointer<float> realFloat(Expr expr, size_t size) {
-			auto chunk = floats(size);
-			linear.fill(chunk, linear.maybeCache(expr, size), size);
-			return chunk;
-		}
-		ConstRealPointer<float> realFloat(expression::ReadableReal<float> expr, size_t size) {
-			return expr.pointer;
-		}
-		ConstRealPointer<float> realFloat(WritableReal<float> expr, size_t size) {
-			return expr.pointer;
-		}
-		template<class Expr>
-		ConstRealPointer<double> realDouble(Expr expr, size_t size) {
-			auto chunk = doubles(size);
-			linear.fill(chunk, linear.maybeCache(expr, size), size);
-			return chunk;
-		}
-		ConstRealPointer<double> realDouble(expression::ReadableReal<double> expr, size_t size) {
-			return expr.pointer;
-		}
-		ConstRealPointer<double> realDouble(WritableReal<double> expr, size_t size) {
-			return expr.pointer;
-		}
-	private:
-		Linear &linear;
-		int depth = 0;
-	};
 };
 
 // SFINAE template for checking that an expression naturally returns a particular item type
@@ -559,24 +558,30 @@ using ItemType = typename std::enable_if<
 // Fallback implementation - this should be specialised (with useLinear=true) with faster methods where available
 template<bool useLinear>
 struct LinearImpl : public LinearImplBase<useLinear> {
-	LinearImpl() : LinearImplBase<useLinear>(this) {}
+	LinearImpl() : LinearImplBase<useLinear>(this), cached(*this) {}
 
-//	// Override .fill() for specific pointer/expressions which you can do quickly.  Calling `cached.realFloat()` etc. will call back to .fill()
-//	using LinearImplBase<useLinear>::fill;
-//	template<typename V, class Expr>
-//	void fill(RealPointer<V> pointer, expression::Sqrt<expression::Norm<Expr>> expr, size_t size) {
-//		auto replacedExpr = maybeCache(expr, size);
-//		checkSimplificationWorked(replacedExpr);
-//		for (size_t i = 0; i < size; ++i) {
-//			pointer[i] = replacedExpr.get(i);
-//		}
-//	}
+	using LinearImplBase<useLinear>::fill;
+	
+	// Override .fill() for specific pointer/expressions which you can do quickly.  Calling `cached.realFloat()` etc. will call back to .fill()
+	template<class Expr>
+	void fill(RealPointer<float> pointer, expression::Sqrt<expression::Norm<Expr>> expr, size_t size) {
+		auto normExpr = expr.a;
+		auto array = cached.realFloat(normExpr, size);
+		// The idea is to use an existing fast function for this
+		for (size_t i = 0; i < size; ++i) {
+			pointer[i] = std::sqrt(array[i]);
+		}
+	}
+	
+	template<typename V>
+	void reserve(size_t) {}
+	// This makes sure we don't allocate (unless there's a complicated expression with multiple sqrts in it!)
+	template<>
+	void reserve<float>(size_t size) {
+		cached.floats.reserve(size*4);
+	}
 private:
-//	template<class Expr>
-//	void checkSimplificationWorked(Expr) {}
-//	// This specific pattern should've been replaced
-//	template<class Expr>
-//	void checkSimplificationWorked(expression::Sqrt<expression::Norm<Expr>> expr) = delete;
+	CachedResults<LinearImpl, 32> cached;
 };
 
 }}; // namespace

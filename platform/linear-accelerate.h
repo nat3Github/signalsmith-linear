@@ -103,7 +103,7 @@ struct LinearImpl<true> : public LinearImplBase<true> {
 	}
 
 protected:
-	CachedResults<32> cached;
+	CachedResults<LinearImpl, 32> cached;
 /*
 	using Base::copy;
 	void copy(const int N, const float *x, const int xStride, float *y, const int yStride) {
