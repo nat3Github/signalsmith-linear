@@ -62,23 +62,46 @@ namespace expression {
 	size_t minSize(size_t a, size_t b) {
 		return std::min<size_t>(a, b);
 	}
-
-	// Expressions that just return a constant value
-	template<typename V>
-	struct Constant {
-		EXPRESSION_NAME(Constant, "V");
-		V value;
-
-		Constant(V value) : value(value) {}
+	
+	// All base Exprs inherit from this, so we can SFINAE-test for them
+	struct Base {};
+	void mustBeExpr(const Base &) {}
 		
-		V get(std::ptrdiff_t) const {
-			return value;
+	template<class V, typename=void>
+	struct ExprTest {
+		struct Constant : public Base {
+			EXPRESSION_NAME(Constant, "V");
+			V value;
+
+			Constant(V value) : value(value) {}
+			
+			V get(std::ptrdiff_t) const {
+				return value;
+			}
+		};
+		
+		static Constant wrap(const V &v) {
+			return {v};
 		}
+	};
+	template<class Expr>
+	struct ExprTest<Expr, decltype(mustBeExpr(std::declval<Expr>()))> {
+		static Expr wrap(const Expr &expr) {
+			return expr;
+		}
+	};
+	// Constant class, only defined for non-Expr types
+	template<class Expr>
+	using Constant = typename ExprTest<Expr>::Constant;
+	
+	template<class Expr>
+	auto ensureExpr(const Expr &expr) -> decltype(ExprTest<Expr>::wrap(expr)){
+		return ExprTest<Expr>::wrap(expr);
 	};
 
 	// Expressions that just read from a pointer
 	template<typename V>
-	struct ReadableReal {
+	struct ReadableReal : public Base {
 		EXPRESSION_NAME(ReadableReal, "const V*");
 		ConstRealPointer<V> pointer;
 
@@ -89,7 +112,7 @@ namespace expression {
 		}
 	};
 	template<typename V>
-	struct ReadableComplex {
+	struct ReadableComplex : public Base {
 		EXPRESSION_NAME(ReadableComplex, "const VC*");
 		ConstComplexPointer<V> pointer;
 
@@ -100,7 +123,7 @@ namespace expression {
 		}
 	};
 	template<typename V>
-	struct ReadableSplit {
+	struct ReadableSplit : public Base {
 		EXPRESSION_NAME(ReadableSplit, "const VS*");
 		ConstSplitPointer<V> pointer;
 
@@ -115,7 +138,7 @@ namespace expression {
 /*
 #define SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Name, OP) \
 	template<class Right> \
-	struct Name { \
+	struct Name : public Base { \
 		const Right right; \
 		Name(const Right &right) : right(right) {} \
 		auto get(std::ptrdiff_t i) const -> decltype(OP right.get(i)) { \
@@ -140,7 +163,7 @@ namespace expression {
 		return {a, b}; \
 	} \
 	template<class A, class B> \
-	struct Name { \
+	struct Name : public Base { \
 		EXPRESSION_NAME(Name, (#Name "<") + A::name() + "," + B::name() + ">"); \
 		A a; \
 		B b; \
@@ -155,11 +178,11 @@ const Expression<expression::Name<A, B>> operator OP(const Expression<A> &a, con
 	return {a, b}; \
 } \
 template<class A, class B> \
-const Expression<expression::Name<expression::Constant<A>, B>> operator OP(const expression::Constant<A> &a, const Expression<B> &b) { \
+auto operator OP(const Expression<A> &a, const B &b) -> const Expression<expression::Name<A, expression::Constant<B>>> { \
 	return {a, b}; \
 } \
 template<class A, class B> \
-const Expression<expression::Name<A, expression::Constant<B>>> operator OP(const Expression<A> &a, const expression::Constant<B> &b) { \
+auto operator OP(const A &a, const Expression<B> &b) -> const Expression<expression::Name<expression::Constant<A>, B>> { \
 	return {a, b}; \
 } \
 namespace expression {
@@ -177,7 +200,7 @@ namespace expression {
 		return {a}; \
 	} \
 	template<class A> \
-	struct Name { \
+	struct Name : public Base { \
 		EXPRESSION_NAME(Name, (#Name "<") + A::name() + ">"); \
 		A a; \
 		Name(const A &a) : a(a) {} \
@@ -283,7 +306,7 @@ struct WritableExpression : public Expression<BaseExpr> {
 
 	template<class Expr>
 	WritableExpression & operator=(const Expr &expr) {
-		this->linear.fill(this->pointer, expr, this->size);
+		this->linear.fill(this->pointer, expression::ensureExpr(expr), this->size);
 		return *this;
 	}
 

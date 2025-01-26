@@ -37,6 +37,39 @@ using OpVoidAcBp = OpVoidAB<Op, 2, 1>;
 template<class Op>
 using OpVoidAcBc = OpVoidAB<Op, 2, 2>;
 
+template<class Op, int typeA, int typeB>
+struct OpVoidABk {
+	Op op;
+
+	template<class Data>
+	void reference(Data &data) const {
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1)[0]; // scalar value
+		for (size_t i = 0; i < data.size; ++i) {
+			op.opRef(a[i], b);
+		}
+	}
+
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1)[0]; // scalar value
+		op.op(linear.wrap(a, data.size), b);
+	}
+};
+template<class Op>
+using OpVoidArBrk = OpVoidABk<Op, 0, 0>;
+template<class Op>
+using OpVoidArBpk = OpVoidABk<Op, 0, 1>;
+template<class Op>
+using OpVoidArBck = OpVoidABk<Op, 0, 2>;
+template<class Op>
+using OpVoidAcBrk = OpVoidABk<Op, 2, 0>;
+template<class Op>
+using OpVoidAcBpk = OpVoidABk<Op, 2, 1>;
+template<class Op>
+using OpVoidAcBck = OpVoidABk<Op, 2, 2>;
+
 template<class Op, int typeA, int typeB, int typeC>
 struct OpVoidABC {
 	Op op;
@@ -76,6 +109,86 @@ template<class Op>
 using OpVoidAcBcCr = OpVoidABC<Op, 2, 2, 0>;
 template<class Op>
 using OpVoidAcBcCc = OpVoidABC<Op, 2, 2, 2>;
+
+template<class Op, int typeA, int typeB, int typeC>
+struct OpVoidABCk {
+	Op op;
+
+	template<class Data>
+	void reference(Data &data) const {
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1);
+		auto c = data.template get<typeC>(2)[0];
+		for (size_t i = 0; i < data.size; ++i) {
+			op.opRef(a[i], b[i], c);
+		}
+	}
+
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1);
+		auto c = data.template get<typeC>(2)[0];
+		size_t size = data.size;
+		op.op(linear(a, size), linear(b, size), c);
+	}
+};
+template<class Op>
+using OpVoidArBrCrk = OpVoidABCk<Op, 0, 0, 0>;
+template<class Op>
+using OpVoidArBrCck = OpVoidABCk<Op, 0, 0, 2>;
+template<class Op>
+using OpVoidArBcCrk = OpVoidABCk<Op, 0, 2, 0>;
+template<class Op>
+using OpVoidArBcCck = OpVoidABCk<Op, 0, 2, 2>;
+template<class Op>
+using OpVoidAcBrCrk = OpVoidABCk<Op, 2, 0, 0>;
+template<class Op>
+using OpVoidAcBrCck = OpVoidABCk<Op, 2, 0, 2>;
+template<class Op>
+using OpVoidAcBcCrk = OpVoidABCk<Op, 2, 2, 0>;
+template<class Op>
+using OpVoidAcBcCck = OpVoidABCk<Op, 2, 2, 2>;
+
+template<class Op, int typeA, int typeB, int typeC>
+struct OpVoidABkC {
+	Op op;
+
+	template<class Data>
+	void reference(Data &data) const {
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1)[0];
+		auto c = data.template get<typeC>(2);
+		for (size_t i = 0; i < data.size; ++i) {
+			op.opRef(a[i], b, c[i]);
+		}
+	}
+
+	template<class L, class Data>
+	void linear(L &linear, Data &data) const {
+		auto a = data.template get<typeA>(0);
+		auto b = data.template get<typeB>(1)[0];
+		auto c = data.template get<typeC>(2);
+		size_t size = data.size;
+		op.op(linear(a, size), b, linear(c, size));
+	}
+};
+template<class Op>
+using OpVoidArBrkCr = OpVoidABkC<Op, 0, 0, 0>;
+template<class Op>
+using OpVoidArBrkCc = OpVoidABkC<Op, 0, 0, 2>;
+template<class Op>
+using OpVoidArBckCr = OpVoidABkC<Op, 0, 2, 0>;
+template<class Op>
+using OpVoidArBckCc = OpVoidABkC<Op, 0, 2, 2>;
+template<class Op>
+using OpVoidAcBrkCr = OpVoidABkC<Op, 2, 0, 0>;
+template<class Op>
+using OpVoidAcBrkCc = OpVoidABkC<Op, 2, 0, 2>;
+template<class Op>
+using OpVoidAcBckCr = OpVoidABkC<Op, 2, 2, 0>;
+template<class Op>
+using OpVoidAcBckCc = OpVoidABkC<Op, 2, 2, 2>;
 
 template<class Op, int typeA, int typeB, int typeC, int typeD>
 struct OpVoidABCD {
@@ -468,6 +581,20 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 		test.addOp<OpVoidArBr<MinusFloor>>("MinusFloor");
 	}
 	{
+		TestLinear test(maxSize, benchmarkSeconds, "realConstants");
+		
+		test.addOp<OpVoidArBrk<Assign>>("Assign");
+
+		test.addOp<OpVoidArBrCrk<Add>>("Add");
+		test.addOp<OpVoidArBrkCr<Add>>("Add2");
+		test.addOp<OpVoidArBrCrk<Sub>>("Sub");
+		test.addOp<OpVoidArBrkCr<Sub>>("Sub2");
+		test.addOp<OpVoidArBrCrk<Mul>>("Mul");
+		test.addOp<OpVoidArBrkCr<Mul>>("Mul2");
+		test.addOp<OpVoidArBrCrk<Div>>("Div");
+		test.addOp<OpVoidArBrkCr<Div>>("Div2");
+	}
+	{
 		TestLinear test(maxSize, benchmarkSeconds, "complex");
 
 		test.addOp<OpVoidAcBcCc<Add>>("Add");
@@ -478,6 +605,18 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 		test.addOp<OpVoidAcBc<Exp>>("Exp");
 		test.addOp<OpVoidAcBc<Log>>("Log");
 		test.addOp<OpVoidAcBc<Log10>>("Log10");
+	}
+	{
+		TestLinear test(maxSize, benchmarkSeconds, "complexConstants");
+
+		test.addOp<OpVoidAcBcCck<Add>>("Add");
+		test.addOp<OpVoidAcBckCc<Add>>("Add2");
+		test.addOp<OpVoidAcBcCck<Sub>>("Sub");
+		test.addOp<OpVoidAcBckCc<Sub>>("Sub2");
+		test.addOp<OpVoidAcBcCck<Mul>>("Mul");
+		test.addOp<OpVoidAcBckCc<Mul>>("Mul2");
+		test.addOp<OpVoidAcBcCck<Div>>("Div");
+		test.addOp<OpVoidAcBckCc<Div>>("Div2");
 	}
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "mixed");
