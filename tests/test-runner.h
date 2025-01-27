@@ -28,10 +28,17 @@ struct RunDataGetter<Data, V, 2> {
 		return data.complex(index);
 	}
 };
+template<class Data, typename V>
+struct RunDataGetter<Data, V, 3> {
+	static signalsmith::linear::SplitPointer<V> get(Data &data, size_t index) {
+		return data.split(index);
+	}
+};
 
 template<typename Sample, size_t alignBytes=32>
 struct RunData {
 	using Complex = std::complex<Sample>;
+	using SplitPointer = signalsmith::linear::SplitPointer<Sample>;
 
 	static constexpr size_t extraAlignmentItems = alignBytes/sizeof(Sample);
 	template<class V>
@@ -43,6 +50,7 @@ struct RunData {
 	std::vector<Sample *> reals;
 	std::vector<Sample *> positives;
 	std::vector<Complex *> complexes;
+	std::vector<SplitPointer> splits;
 
 	RunData(size_t size, int seed=0) : size(size), seed(seed) {}
 	RunData(const RunData &other) : size(other.size), seed(other.seed) {
@@ -57,6 +65,13 @@ struct RunData {
 		for (auto *otherP : other.complexes) {
 			auto *thisP = complex(complexes.size());
 			for (size_t i = 0; i < size; ++i) thisP[i] = otherP[i];
+		}
+		for (auto otherP : other.splits) {
+			auto thisP = split(splits.size());
+			for (size_t i = 0; i < size; ++i) {
+				thisP.real[i] = otherP.real[i];
+				thisP.imag[i] = otherP.imag[i];
+			}
 		}
 	}
 	
@@ -99,6 +114,23 @@ struct RunData {
 			}
 		}
 		return complexes[index];
+	}
+	SplitPointer split(size_t index) {
+		while (index >= splits.size()) {
+			std::default_random_engine engine(unsigned(seed + realVectors.size()));
+			std::uniform_real_distribution<Sample> dist{-1, 1};
+			
+			splitVectors.emplace_back(size + extraAlignmentItems);
+			Sample *real = nextAligned(splitVectors.back().data());
+			splitVectors.emplace_back(size + extraAlignmentItems);
+			Sample *imag = nextAligned(splitVectors.back().data());
+			splits.push_back({real, imag});
+			for (size_t i = 0; i < size; ++i) {
+				real[i] = dist(engine);
+				imag[i] = dist(engine);
+			}
+		}
+		return splits[index];
 	}
 	
 	template<int dataType>
@@ -166,6 +198,7 @@ private:
 	std::vector<std::vector<Sample>> realVectors;
 	std::vector<std::vector<Sample>> positiveVectors;
 	std::vector<std::vector<Complex>> complexVectors;
+	std::vector<std::vector<Sample>> splitVectors;
 };
 
 template<class Fn>

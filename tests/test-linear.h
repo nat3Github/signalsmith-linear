@@ -24,18 +24,6 @@ struct OpVoidAB {
 		op.op(linear.wrap(a, data.size), linear.wrap(b, data.size));
 	}
 };
-template<class Op>
-using OpVoidArBr = OpVoidAB<Op, 0, 0>;
-template<class Op>
-using OpVoidArBp = OpVoidAB<Op, 0, 1>;
-template<class Op>
-using OpVoidArBc = OpVoidAB<Op, 0, 2>;
-template<class Op>
-using OpVoidAcBr = OpVoidAB<Op, 2, 0>;
-template<class Op>
-using OpVoidAcBp = OpVoidAB<Op, 2, 1>;
-template<class Op>
-using OpVoidAcBc = OpVoidAB<Op, 2, 2>;
 
 template<class Op, int typeA, int typeB>
 struct OpVoidABk {
@@ -93,22 +81,6 @@ struct OpVoidABC {
 		op.op(linear(a, size), linear(b, size), linear(c, size));
 	}
 };
-template<class Op>
-using OpVoidArBrCr = OpVoidABC<Op, 0, 0, 0>;
-template<class Op>
-using OpVoidArBrCc = OpVoidABC<Op, 0, 0, 2>;
-template<class Op>
-using OpVoidArBcCr = OpVoidABC<Op, 0, 2, 0>;
-template<class Op>
-using OpVoidArBcCc = OpVoidABC<Op, 0, 2, 2>;
-template<class Op>
-using OpVoidAcBrCr = OpVoidABC<Op, 2, 0, 0>;
-template<class Op>
-using OpVoidAcBrCc = OpVoidABC<Op, 2, 0, 2>;
-template<class Op>
-using OpVoidAcBcCr = OpVoidABC<Op, 2, 2, 0>;
-template<class Op>
-using OpVoidAcBcCc = OpVoidABC<Op, 2, 2, 2>;
 
 template<class Op, int typeA, int typeB, int typeC>
 struct OpVoidABCk {
@@ -133,22 +105,6 @@ struct OpVoidABCk {
 		op.op(linear(a, size), linear(b, size), c);
 	}
 };
-template<class Op>
-using OpVoidArBrCrk = OpVoidABCk<Op, 0, 0, 0>;
-template<class Op>
-using OpVoidArBrCck = OpVoidABCk<Op, 0, 0, 2>;
-template<class Op>
-using OpVoidArBcCrk = OpVoidABCk<Op, 0, 2, 0>;
-template<class Op>
-using OpVoidArBcCck = OpVoidABCk<Op, 0, 2, 2>;
-template<class Op>
-using OpVoidAcBrCrk = OpVoidABCk<Op, 2, 0, 0>;
-template<class Op>
-using OpVoidAcBrCck = OpVoidABCk<Op, 2, 0, 2>;
-template<class Op>
-using OpVoidAcBcCrk = OpVoidABCk<Op, 2, 2, 0>;
-template<class Op>
-using OpVoidAcBcCck = OpVoidABCk<Op, 2, 2, 2>;
 
 template<class Op, int typeA, int typeB, int typeC>
 struct OpVoidABkC {
@@ -173,22 +129,6 @@ struct OpVoidABkC {
 		op.op(linear(a, size), b, linear(c, size));
 	}
 };
-template<class Op>
-using OpVoidArBrkCr = OpVoidABkC<Op, 0, 0, 0>;
-template<class Op>
-using OpVoidArBrkCc = OpVoidABkC<Op, 0, 0, 2>;
-template<class Op>
-using OpVoidArBckCr = OpVoidABkC<Op, 0, 2, 0>;
-template<class Op>
-using OpVoidArBckCc = OpVoidABkC<Op, 0, 2, 2>;
-template<class Op>
-using OpVoidAcBrkCr = OpVoidABkC<Op, 2, 0, 0>;
-template<class Op>
-using OpVoidAcBrkCc = OpVoidABkC<Op, 2, 0, 2>;
-template<class Op>
-using OpVoidAcBckCr = OpVoidABkC<Op, 2, 2, 0>;
-template<class Op>
-using OpVoidAcBckCc = OpVoidABkC<Op, 2, 2, 2>;
 
 template<class Op, int typeA, int typeB, int typeC, int typeD>
 struct OpVoidABCD {
@@ -215,39 +155,6 @@ struct OpVoidABCD {
 		op.op(linear(a, size), linear(b, size), linear(c, size), linear(d, size));
 	}
 };
-
-template<class Op>
-using OpVoidArBrCrDr = OpVoidABCD<Op, 0, 0, 0, 0>;
-template<class Op>
-using OpVoidArBrCrDc = OpVoidABCD<Op, 0, 0, 0, 2>;
-template<class Op>
-using OpVoidArBrCcDr = OpVoidABCD<Op, 0, 0, 2, 0>;
-template<class Op>
-using OpVoidArBrCcDc = OpVoidABCD<Op, 0, 0, 2, 2>;
-template<class Op>
-using OpVoidArBcCrDr = OpVoidABCD<Op, 0, 2, 0, 0>;
-template<class Op>
-using OpVoidArBcCrDc = OpVoidABCD<Op, 0, 2, 0, 2>;
-template<class Op>
-using OpVoidArBcCcDr = OpVoidABCD<Op, 0, 2, 2, 0>;
-template<class Op>
-using OpVoidArBcCcDc = OpVoidABCD<Op, 0, 2, 2, 2>;
-template<class Op>
-using OpVoidAcBrCrDr = OpVoidABCD<Op, 2, 0, 0, 0>;
-template<class Op>
-using OpVoidAcBrCrDc = OpVoidABCD<Op, 2, 0, 0, 2>;
-template<class Op>
-using OpVoidAcBrCcDr = OpVoidABCD<Op, 2, 0, 2, 0>;
-template<class Op>
-using OpVoidAcBrCcDc = OpVoidABCD<Op, 2, 0, 2, 2>;
-template<class Op>
-using OpVoidAcBcCrDr = OpVoidABCD<Op, 2, 2, 0, 0>;
-template<class Op>
-using OpVoidAcBcCrDc = OpVoidABCD<Op, 2, 2, 0, 2>;
-template<class Op>
-using OpVoidAcBcCcDr = OpVoidABCD<Op, 2, 2, 2, 0>;
-template<class Op>
-using OpVoidAcBcCcDc = OpVoidABCD<Op, 2, 2, 2, 2>;
 
 template<class Op, int typeA, int typeB, int typeC, int typeD, int typeE>
 struct OpVoidABCDE {
@@ -505,11 +412,17 @@ struct TestLinear {
 	}
 };
 
+float toVal(float v) {return v;}
+double toVal(double v) {return v;}
+std::complex<float> toVal(std::complex<float> v) {return v;}
+std::complex<double> toVal(std::complex<double> v) {return v;}
+
 #define TEST_EXPR2(Name, refExpr, expr) \
 struct Name { \
 	const char *name = #expr; \
 	template<class A, class B> \
-	void opRef(A &a, B &b) const { \
+	void opRef(A &&a, B &&rb) const { \
+		auto b = toVal(rb); \
 		refExpr; \
 	} \
 	template<class A, class B> \
@@ -521,7 +434,9 @@ struct Name { \
 struct Name { \
 	const char *name = #expr; \
 	template<class A, class B, class C> \
-	void opRef(A &a, B &b, C &c) const { \
+	void opRef(A &&a, B &&rb, C &&rc) const { \
+		auto b = toVal(rb); \
+		auto c = toVal(rc); \
 		refExpr; \
 	} \
 	template<class A, class B, class C> \
@@ -533,7 +448,10 @@ struct Name { \
 struct Name { \
 	const char *name = #expr; \
 	template<class A, class B, class C, class D> \
-	void opRef(A &a, B &b, C &c, D &d) const { \
+	void opRef(A &&a, B &&rb, C &&rc, D &&rd) const { \
+		auto b = toVal(rb); \
+		auto c = toVal(rc); \
+		auto d = toVal(rd); \
 		refExpr; \
 	} \
 	template<class A, class B, class C, class D> \
@@ -545,7 +463,11 @@ struct Name { \
 struct Name { \
 	const char *name = #expr; \
 	template<class A, class B, class C, class D, class E> \
-	void opRef(A &a, B &b, C &c, D &d, E &e) const { \
+	void opRef(A &&a, B &&rb, C &&rc, D &&rd, E &&re) const { \
+		auto b = toVal(rb); \
+		auto c = toVal(rc); \
+		auto d = toVal(rd); \
+		auto e = toVal(re); \
 		refExpr; \
 	} \
 	template<class A, class B, class C, class D, class E> \
@@ -560,6 +482,7 @@ TEST_EXPR3(Mul, a = b*c, a = b*c);
 TEST_EXPR3(Div, a = b/c, a = b/c);
 
 TEST_EXPR2(Abs, a = std::abs(b), a = b.abs());
+TEST_EXPR2(Neg, a = -b, a = -b);
 TEST_EXPR2(Norm, a = std::norm(b), a = b.norm());
 TEST_EXPR2(Exp, a = std::exp(b), a = b.exp());
 TEST_EXPR2(Exp2, a = std::exp2(b), a = b.exp2());
@@ -576,6 +499,7 @@ TEST_EXPR2(Arg, a = std::arg(b), a = b.arg());
 TEST_EXPR2(Floor, a = std::floor(b), a = b.floor());
 TEST_EXPR2(MinusFloor, a = b - std::floor(b), a = b - b.floor());
 
+TEST_EXPR2(AbsNeg, a = -std::abs(b), a = -b.abs());
 TEST_EXPR4(MulAdd, a = b*c + d, a = b*c + d);
 TEST_EXPR4(MulAdd2, a = b + c*d, a = b + c*d);
 TEST_EXPR4(AddMul, a = b*(c + d), a = b*(c + d));
@@ -596,104 +520,149 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "real");
 		
-		test.addOp<OpVoidArBr<Assign>>("Assign");
-		test.addOp<OpVoidArBr<Abs>>("Abs");
+		test.addOp<OpVoidAB<Assign, 0, 0>>("Assign");
+		test.addOp<OpVoidAB<Abs, 0, 0>>("Abs");
+		test.addOp<OpVoidAB<Neg, 0, 0>>("Neg");
 		
-		test.addOp<OpVoidArBrCr<Add>>("Add");
-		test.addOp<OpVoidArBrCr<Sub>>("Sub");
-		test.addOp<OpVoidArBrCr<Mul>>("Mul");
-		test.addOp<OpVoidArBrCr<Div>>("Div");
+		test.addOp<OpVoidABC<Add, 0, 0, 0>>("Add");
+		test.addOp<OpVoidABC<Sub, 0, 0, 0>>("Sub");
+		test.addOp<OpVoidABC<Mul, 0, 0, 0>>("Mul");
+		test.addOp<OpVoidABC<Div, 0, 0, 0>>("Div");
 
-		test.addOp<OpVoidArBr<Exp>>("Exp");
-		test.addOp<OpVoidArBr<Exp2>>("Exp2");
-		test.addOp<OpVoidArBp<Log>>("Log");
-		test.addOp<OpVoidArBp<Log2>>("Log2");
-		test.addOp<OpVoidArBp<Log10>>("Log10");
-		test.addOp<OpVoidArBp<Sqrt>>("Sqrt");
-		test.addOp<OpVoidArBr<Cbrt>>("Cbrt");
-		test.addOp<OpVoidArBr<Floor>>("Floor");
-		test.addOp<OpVoidArBr<MinusFloor>>("MinusFloor");
+		test.addOp<OpVoidAB<Exp, 0, 0>>("Exp");
+		test.addOp<OpVoidAB<Exp2, 0, 0>>("Exp2");
+		test.addOp<OpVoidAB<Log, 0, 1>>("Log");
+		test.addOp<OpVoidAB<Log2, 0, 1>>("Log2");
+		test.addOp<OpVoidAB<Log10, 0, 1>>("Log10");
+		test.addOp<OpVoidAB<Sqrt, 0, 1>>("Sqrt");
+		test.addOp<OpVoidAB<Cbrt, 0, 0>>("Cbrt");
+		test.addOp<OpVoidAB<Floor, 0, 0>>("Floor");
+		test.addOp<OpVoidAB<MinusFloor, 0, 0>>("MinusFloor");
 	}
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "realConstants");
 		
-		test.addOp<OpVoidArBrk<Assign>>("Assign");
+		test.addOp<OpVoidABk<Assign, 0, 0>>("Assign");
 
-		test.addOp<OpVoidArBrCrk<Add>>("Add");
-		test.addOp<OpVoidArBrkCr<Add>>("Add2");
-		test.addOp<OpVoidArBrCrk<Sub>>("Sub");
-		test.addOp<OpVoidArBrkCr<Sub>>("Sub2");
-		test.addOp<OpVoidArBrCrk<Mul>>("Mul");
-		test.addOp<OpVoidArBrkCr<Mul>>("Mul2");
-		test.addOp<OpVoidArBrCrk<Div>>("Div");
-		test.addOp<OpVoidArBrkCr<Div>>("Div2");
+		test.addOp<OpVoidABCk<Add, 0, 0, 0>>("Add");
+		test.addOp<OpVoidABkC<Add, 0, 0, 0>>("Add2");
+		test.addOp<OpVoidABCk<Sub, 0, 0, 0>>("Sub");
+		test.addOp<OpVoidABkC<Sub, 0, 0, 0>>("Sub2");
+		test.addOp<OpVoidABCk<Mul, 0, 0, 0>>("Mul");
+		test.addOp<OpVoidABkC<Mul, 0, 0, 0>>("Mul2");
+		test.addOp<OpVoidABCk<Div, 0, 0, 0>>("Div");
+		test.addOp<OpVoidABkC<Div, 0, 0, 0>>("Div2");
 	}
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "complex");
 
-		test.addOp<OpVoidAcBcCc<Add>>("Add");
-		test.addOp<OpVoidAcBcCc<Sub>>("Sub");
-		test.addOp<OpVoidAcBcCc<Mul>>("Mul");
-		test.addOp<OpVoidAcBcCc<Div>>("Div");
+		test.addOp<OpVoidAB<Neg, 2, 2>>("Neg");
+		test.addOp<OpVoidAB<Conj, 2, 2>>("Conj");
 
-		test.addOp<OpVoidAcBc<Exp>>("Exp");
-		test.addOp<OpVoidAcBc<Log>>("Log");
-		test.addOp<OpVoidAcBc<Log10>>("Log10");
+		test.addOp<OpVoidABC<Add, 2, 2, 2>>("Add");
+		test.addOp<OpVoidABC<Sub, 2, 2, 2>>("Sub");
+		test.addOp<OpVoidABC<Mul, 2, 2, 2>>("Mul");
+		test.addOp<OpVoidABC<Div, 2, 2, 2>>("Div");
+
+		test.addOp<OpVoidAB<Exp, 2, 2>>("Exp");
+		test.addOp<OpVoidAB<Log, 2, 2>>("Log");
+		test.addOp<OpVoidAB<Log10, 2, 2>>("Log10");
 	}
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "complexConstants");
 
-		test.addOp<OpVoidAcBcCck<Add>>("Add");
-		test.addOp<OpVoidAcBckCc<Add>>("Add2");
-		test.addOp<OpVoidAcBcCck<Sub>>("Sub");
-		test.addOp<OpVoidAcBckCc<Sub>>("Sub2");
-		test.addOp<OpVoidAcBcCck<Mul>>("Mul");
-		test.addOp<OpVoidAcBckCc<Mul>>("Mul2");
-		test.addOp<OpVoidAcBcCck<Div>>("Div");
-		test.addOp<OpVoidAcBckCc<Div>>("Div2");
+		test.addOp<OpVoidABk<Assign, 2, 2>>("Assign");
+
+		test.addOp<OpVoidABCk<Add, 2, 2, 2>>("Add");
+		test.addOp<OpVoidABkC<Add, 2, 2, 2>>("Add2");
+		test.addOp<OpVoidABCk<Sub, 2, 2, 2>>("Sub");
+		test.addOp<OpVoidABkC<Sub, 2, 2, 2>>("Sub2");
+		test.addOp<OpVoidABCk<Mul, 2, 2, 2>>("Mul");
+		test.addOp<OpVoidABkC<Mul, 2, 2, 2>>("Mul2");
+		test.addOp<OpVoidABCk<Div, 2, 2, 2>>("Div");
+		test.addOp<OpVoidABkC<Div, 2, 2, 2>>("Div2");
+	}
+	{
+		TestLinear test(maxSize, benchmarkSeconds, "split");
+
+		test.addOp<OpVoidAB<Neg, 3, 3>>("Neg");
+		test.addOp<OpVoidAB<Conj, 3, 3>>("Conj");
+
+		test.addOp<OpVoidABC<Add, 3, 3, 3>>("Add");
+		test.addOp<OpVoidABC<Sub, 3, 3, 3>>("Sub");
+		test.addOp<OpVoidABC<Mul, 3, 3, 3>>("Mul");
+		test.addOp<OpVoidABC<Div, 3, 3, 3>>("Div");
+
+		test.addOp<OpVoidAB<Exp, 3, 3>>("Exp");
+		test.addOp<OpVoidAB<Log, 3, 3>>("Log");
+		test.addOp<OpVoidAB<Log10, 3, 3>>("Log10");
+	}
+	{
+		TestLinear test(maxSize, benchmarkSeconds, "splitConstants");
+
+		test.addOp<OpVoidABk<Assign, 3, 3>>("Assign");
+
+		test.addOp<OpVoidABCk<Add, 3, 3, 3>>("Add");
+		test.addOp<OpVoidABkC<Add, 3, 3, 3>>("Add2");
+		test.addOp<OpVoidABCk<Sub, 3, 3, 3>>("Sub");
+		test.addOp<OpVoidABkC<Sub, 3, 3, 3>>("Sub2");
+		test.addOp<OpVoidABCk<Mul, 3, 3, 3>>("Mul");
+		test.addOp<OpVoidABkC<Mul, 3, 3, 3>>("Mul2");
+		test.addOp<OpVoidABCk<Div, 3, 3, 3>>("Div");
+		test.addOp<OpVoidABkC<Div, 3, 3, 3>>("Div2");
 	}
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "mixed");
-		test.addOp<OpVoidAcBr<Assign>>("AssignCR");
+		test.addOp<OpVoidAB<Assign, 2, 0>>("AssignCR");
 		
-		test.addOp<OpVoidAcBrCr<Add>>("AddCRR");
-		test.addOp<OpVoidAcBcCr<Add>>("AddCCR");
-		test.addOp<OpVoidAcBrCc<Add>>("AddCRC");
+		test.addOp<OpVoidABC<Add, 2, 0, 0>>("AddCRR");
+		test.addOp<OpVoidABC<Add, 2, 2, 0>>("AddCCR");
+		test.addOp<OpVoidABC<Add, 2, 0, 2>>("AddCRC");
 		
-		test.addOp<OpVoidAcBrCr<Sub>>("SubCRR");
-		test.addOp<OpVoidAcBcCr<Sub>>("SubCCR");
-		test.addOp<OpVoidAcBrCc<Sub>>("SubCRC");
+		test.addOp<OpVoidABC<Sub, 2, 0, 0>>("SubCRR");
+		test.addOp<OpVoidABC<Sub, 2, 2, 0>>("SubCCR");
+		test.addOp<OpVoidABC<Sub, 2, 0, 2>>("SubCRC");
 
-		test.addOp<OpVoidAcBrCr<Mul>>("MulCRR");
-		test.addOp<OpVoidAcBcCr<Mul>>("MulCCR");
-		test.addOp<OpVoidAcBrCc<Mul>>("MulCRC");
+		test.addOp<OpVoidABC<Mul, 2, 0, 0>>("MulCRR");
+		test.addOp<OpVoidABC<Mul, 2, 2, 0>>("MulCCR");
+		test.addOp<OpVoidABC<Mul, 2, 0, 2>>("MulCRC");
 
-		test.addOp<OpVoidAcBrCr<Div>>("DivCRR");
-		test.addOp<OpVoidAcBcCr<Div>>("DivCCR");
-		test.addOp<OpVoidAcBrCc<Div>>("DivCRC");
+		test.addOp<OpVoidABC<Div, 2, 0, 0>>("DivCRR");
+		test.addOp<OpVoidABC<Div, 2, 2, 0>>("DivCCR");
+		test.addOp<OpVoidABC<Div, 2, 0, 2>>("DivCRC");
 	}
 
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "complex2real");
-		test.addOp<OpVoidArBc<Norm>>("NormC");
-		test.addOp<OpVoidArBc<Abs>>("AbsC", "for complex b");
-		test.addOp<OpVoidArBc<SqrtNorm>>("SqrtNormC");
-		test.addOp<OpVoidAcBc<Conj>>("ConjC");
-		test.addOp<OpVoidArBc<Real>>("Real");
-		test.addOp<OpVoidArBc<Imag>>("Imag");
-		test.addOp<OpVoidArBc<Arg>>("Arg");
+		test.addOp<OpVoidAB<Norm, 0, 2>>("Norm");
+		test.addOp<OpVoidAB<Abs, 0, 2>>("Abs");
+		test.addOp<OpVoidAB<SqrtNorm, 0, 2>>("SqrtNorm");
+		test.addOp<OpVoidAB<Real, 0, 2>>("Real");
+		test.addOp<OpVoidAB<Imag, 0, 2>>("Imag");
+		test.addOp<OpVoidAB<Arg, 0, 2>>("Arg");
+	}
+	{
+		TestLinear test(maxSize, benchmarkSeconds, "split2real");
+		test.addOp<OpVoidAB<Norm, 0, 3>>("Norm");
+		test.addOp<OpVoidAB<Abs, 0, 3>>("Abs");
+		test.addOp<OpVoidAB<SqrtNorm, 0, 3>>("SqrtNorm");
+		test.addOp<OpVoidAB<Real, 0, 3>>("Real");
+		test.addOp<OpVoidAB<Imag, 0, 3>>("Imag");
+		test.addOp<OpVoidAB<Arg, 0, 3>>("Arg");
 	}
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "realCompound");
-		
-		test.addOp<OpVoidArBrCrDr<MulAdd>>("MulAddR");
-		test.addOp<OpVoidArBrCrDr<MulAdd2>>("MulAddR2");
-		test.addOp<OpVoidArBrCrDr<AddMul>>("AddMulR");
-		test.addOp<OpVoidArBrCrDr<AddMul2>>("AddMul2R");
-		test.addOp<OpVoidArBrCrDr<MulSub>>("MulSubR");
-		test.addOp<OpVoidArBrCrDr<MulSub2>>("MulSubR2");
-		test.addOp<OpVoidArBrCrDr<SubMul>>("SubMulR");
-		test.addOp<OpVoidArBrCrDr<SubMul2>>("SubMul2R");
+
+		test.addOp<OpVoidAB<AbsNeg, 0, 0>>("AbsNeg");
+
+		test.addOp<OpVoidABCD<MulAdd, 0, 0, 0, 0>>("MulAddR");
+		test.addOp<OpVoidABCD<MulAdd2, 0, 0, 0, 0>>("MulAddR2");
+		test.addOp<OpVoidABCD<AddMul, 0, 0, 0, 0>>("AddMulR");
+		test.addOp<OpVoidABCD<AddMul2, 0, 0, 0, 0>>("AddMul2R");
+		test.addOp<OpVoidABCD<MulSub, 0, 0, 0, 0>>("MulSubR");
+		test.addOp<OpVoidABCD<MulSub2, 0, 0, 0, 0>>("MulSubR2");
+		test.addOp<OpVoidABCD<SubMul, 0, 0, 0, 0>>("SubMulR");
+		test.addOp<OpVoidABCD<SubMul2, 0, 0, 0, 0>>("SubMul2R");
 		
 		test.addOp<OpVoidABCDE<AddAddMul, 0, 0, 0, 0, 0>>("AddAddMul");
 		test.addOp<OpVoidABCDE<AddSubMul, 0, 0, 0, 0, 0>>("AddSubMul");

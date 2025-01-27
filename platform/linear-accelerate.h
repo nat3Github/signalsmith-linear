@@ -41,6 +41,14 @@ template<>
 std::string typeName<std::complex<double>>() {
 	return "complex<double>";
 }
+template<>
+std::string typeName<const std::complex<float>>() {
+	return "const complex<float>";
+}
+template<>
+std::string typeName<const std::complex<double>>() {
+	return "const complex<double>";
+}
 static size_t _basicFillWarningCounter = 1;
 static void basicFillWarningReset() {
 	// All warnings will print again
@@ -85,6 +93,42 @@ struct LinearImpl<true> : public LinearImplBase<true> {
 	void fill(Pointer pointer, Expression<Expr> expr, size_t size) {
 		return self().fill(pointer, (Expr &)expr, size);
 	};
+	template<class Pointer, class Expr>
+	void fill(Pointer pointer, WritableExpression<Expr> expr, size_t size) {
+		return self().fill(pointer, (Expr &)expr, size);
+	};
+
+	void fill(RealPointer<float> pointer, expression::ReadableReal<float> expr, size_t size) {
+		cblas_scopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+	void fill(RealPointer<float> pointer, WritableReal<float> expr, size_t size) {
+		cblas_scopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+	void fill(RealPointer<double> pointer, expression::ReadableReal<double> expr, size_t size) {
+		cblas_dcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+	void fill(RealPointer<double> pointer, WritableReal<double> expr, size_t size) {
+		cblas_dcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+
+//	template<class V>
+//	void fill(RealPointer<float> pointer, expression::Constant<V> expr, size_t size) {
+//		vDSP_vfill
+//		fill##Name(pointer, expr, size);
+//	}
+
+//	template<class A>
+//	ItemType<A, float, void> fill(RealPointer<float> pointer, expression::Abs<A> expr, size_t size) {
+//		auto floats = cached.floatScope(); \
+//		auto *a = floats.real(expr.a, size); \
+//		vDSP_vabs(a, 1, pointer, 1, size); \
+//	}
+//	template<class A>
+//	ItemType<A, double, void> fill(RealPointer<double> pointer, expression::Abs<A> expr, size_t size) {
+//		auto doubles = cached.doubleScope(); \
+//		auto *a = doubles.real(expr.a, size); \
+//		vDSP_vabsD(a, 1, pointer, 1, size); \
+//	}
 
 private:
 	template<class Pointer, class Expr>
@@ -94,6 +138,95 @@ private:
 			pointer[i] = expr.get(i);
 		}
 	}
+	template<class V, class Expr>
+	void fillBasic(SplitPointer<V> pointer, Expr expr, size_t size) {
+		basicFillWarning<Expr>();
+		for (size_t i = 0; i < size; ++i) {
+			auto c = expr.get(i);
+			pointer.real[i] = c.real();
+			pointer.imag[i] = c.imag();
+		}
+	}
+
+// Forwards .fill() to .fillName(), but doesn't define that
+#define SIGNALSMITH_AUDIO_LINEAR_OP1_R(Name) \
+public: \
+	template<class A> \
+	void fill(RealPointer<float> pointer, expression::Name<A> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+	template<class A> \
+	void fill(RealPointer<double> pointer, expression::Name<A> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+private:
+// R -> R operators
+#define SIGNALSMITH_AUDIO_LINEAR_TREE1_RR(Name, vDSP_func) \
+	template<class A> \
+	ItemType<A, float, void> fill##Name(RealPointer<float> pointer, expression::Name<A> expr, size_t size) { \
+		auto floats = cached.floatScope(); \
+		auto *a = floats.real(expr.a, size); \
+		vDSP_func(a, 1, pointer, 1, size); \
+	} \
+	template<class A> \
+	ItemType<A, double, void> fill##Name(RealPointer<double> pointer, expression::Name<A> expr, size_t size) { \
+		auto doubles = cached.doubleScope(); \
+		auto *a = doubles.real(expr.a, size); \
+		vDSP_func##D(a, 1, pointer, 1, size); \
+	}
+// C -> R operators
+#define SIGNALSMITH_AUDIO_LINEAR_TREE1_RC(Name, vDSP_func) \
+	template<class A> \
+	ItemType<A, std::complex<float>, void> fill##Name(RealPointer<float> pointer, expression::Name<A> expr, size_t size) { \
+		auto floats = cached.floatScope(); \
+		auto a = dspSplit(floats.split(expr.a, size)); \
+		vDSP_func(&a, 1, pointer, 1, size); \
+	} \
+	template<class A> \
+	ItemType<A, std::complex<double>, void> fill##Name(RealPointer<double> pointer, expression::Name<A> expr, size_t size) { \
+		auto doubles = cached.doubleScope(); \
+		auto a = dspSplit(doubles.split(expr.a, size)); \
+		vDSP_func##D(&a, 1, pointer, 1, size); \
+	}
+// C -> C operators
+#define SIGNALSMITH_AUDIO_LINEAR_TREE1_CC(Name, vDSP_func) \
+	template<class A> \
+	ItemType<A, std::complex<float>, void> fill##Name(ComplexPointer<float> pointer, expression::Name<A> expr, size_t size) { \
+		auto floats = cached.floatScope(); \
+		auto a = dspSplit(floats.complex(expr.a, size)); \
+		auto p = dspSplit(pointer); \
+		vDSP_func(&a, 2, &p, 2, size); \
+	} \
+	template<class A> \
+	ItemType<A, std::complex<double>, void> fill##Name(ComplexPointer<double> pointer, expression::Name<A> expr, size_t size) { \
+		auto doubles = cached.doubleScope(); \
+		auto a = dspSplit(doubles.complex(expr.a, size)); \
+		auto p = dspSplit(pointer); \
+		vDSP_func##D(&a, 2, &p, 2, size); \
+	}\
+	template<class A> \
+	ItemType<A, std::complex<float>, void> fill##Name(SplitPointer<float> pointer, expression::Name<A> expr, size_t size) { \
+		auto floats = cached.floatScope(); \
+		auto a = dspSplit(floats.split(expr.a, size)); \
+		auto p = dspSplit(pointer); \
+		vDSP_func(&a, 1, &p, 1, size); \
+	} \
+	template<class A> \
+	ItemType<A, std::complex<double>, void> fill##Name(SplitPointer<double> pointer, expression::Name<A> expr, size_t size) { \
+		auto doubles = cached.doubleScope(); \
+		auto a = dspSplit(doubles.split(expr.a, size)); \
+		auto p = dspSplit(pointer); \
+		vDSP_func##D(&a, 1, &p, 1, size); \
+	}
+	SIGNALSMITH_AUDIO_LINEAR_OP1_R(Abs)
+	SIGNALSMITH_AUDIO_LINEAR_TREE1_RR(Abs, vDSP_vabs);
+	SIGNALSMITH_AUDIO_LINEAR_TREE1_RC(Abs, vDSP_zvabs);
+	SIGNALSMITH_AUDIO_LINEAR_OP1_R(Neg)
+	SIGNALSMITH_AUDIO_LINEAR_TREE1_RR(Neg, vDSP_vneg);
+	SIGNALSMITH_AUDIO_LINEAR_TREE1_CC(Neg, vDSP_zvneg);
+#undef SIGNALSMITH_AUDIO_LINEAR_TREE1_RR
+#undef SIGNALSMITH_AUDIO_LINEAR_TREE1_RC
+#undef SIGNALSMITH_AUDIO_LINEAR_OP1_R
 
 // Forwards .fill() to .fillName(), but doesn't define that
 #define SIGNALSMITH_AUDIO_LINEAR_OP2_R(Name) \
@@ -106,8 +239,9 @@ public: \
 	void fill(RealPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
 		fill##Name(pointer, expr, size); \
 	} \
-// Real -> real operators where the vDSP function arguments are the other way around for some reason
-#define SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Name, vDSP_func) \
+private:
+// R x R -> R operators where the vDSP function arguments are the other way around for some reason
+#define SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RRR(Name, vDSP_func) \
 	template<class A, class B> \
 	void fill##Name(RealPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto floats = cached.floatScope(); \
@@ -123,14 +257,14 @@ public: \
 		vDSP_func##D(b, 1, a, 1, pointer, 1, size); \
 	}
 	SIGNALSMITH_AUDIO_LINEAR_OP2_R(Add)
-	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Add, vDSP_vadd);
+	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RRR(Add, vDSP_vadd);
 	SIGNALSMITH_AUDIO_LINEAR_OP2_R(Sub)
-	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Sub, vDSP_vsub);
+	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RRR(Sub, vDSP_vsub);
 	SIGNALSMITH_AUDIO_LINEAR_OP2_R(Mul)
-	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Mul, vDSP_vmul);
+	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RRR(Mul, vDSP_vmul);
 	SIGNALSMITH_AUDIO_LINEAR_OP2_R(Div)
-	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Div, vDSP_vdiv);
-#undef SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR
+	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RRR(Div, vDSP_vdiv);
+#undef SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RRR
 #undef SIGNALSMITH_AUDIO_LINEAR_OP2_R
 
 // Forwards .fillName() to .fillNameName2(), but doesn't define that
@@ -321,7 +455,7 @@ protected:
 		dsp.imagp = (double *)x.imag;
 		return dsp;
 	}
-	static DSPDoubleSplitComplex dspSplit(const std::complex<double> *x) {
+	static DSPDoubleSplitComplex dspSplit(ConstComplexPointer<double> x) {
 		DSPDoubleSplitComplex dsp;
 		dsp.realp = (double *)x;
 		dsp.imagp = (double *)x + 1;

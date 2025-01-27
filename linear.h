@@ -24,13 +24,24 @@ template<typename V>
 struct ConstSplitPointer {
 	ConstRealPointer<V> real, imag;
 	ConstSplitPointer(ConstRealPointer<V> real, ConstRealPointer<V> imag) : real(real), imag(imag) {}
+
+	// Array-like access for convenience
+	std::complex<V> operator[](std::ptrdiff_t i) const {
+		return {real[i], imag[i]};
+	}
 };
+
 template<typename V>
 struct SplitPointer {
 	RealPointer<V> real, imag;
 	SplitPointer(RealPointer<V> real, RealPointer<V> imag) : real(real), imag(imag) {}
 	operator ConstSplitPointer<V>() {
 		return {real, imag};
+	}
+
+	// Array-like access for convenience
+	std::complex<V> operator[](std::ptrdiff_t i) const {
+		return {real[i], imag[i]};
 	}
 };
 
@@ -75,7 +86,7 @@ namespace expression {
 
 			Constant(V value) : value(value) {}
 			
-			V get(std::ptrdiff_t) const {
+			const V get(std::ptrdiff_t) const {
 				return value;
 			}
 		};
@@ -135,25 +146,25 @@ namespace expression {
 	};
 	
 	// + - * / % ^ & | ~ ! = < > += -= *= /= %= ^= &= |= << >> >>= <<= == != <= >= <=>(since C++20) && || ++ -- , ->* -> ( ) [ ]
-/*
+
 #define SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Name, OP) \
-	template<class Right> \
+	template<class A> \
 	struct Name : public Base { \
-		const Right right; \
-		Name(const Right &right) : right(right) {} \
-		auto get(std::ptrdiff_t i) const -> decltype(OP right.get(i)) { \
-			return OP right.get(i); \
+		EXPRESSION_NAME(Name, (#Name "<") + A::name() + ">"); \
+		A a; \
+		Name(const A &a) : a(a) {} \
+		auto get(std::ptrdiff_t i) const -> decltype(OP a.get(i)) const { \
+			return OP a.get(i); \
 		} \
 	}; \
-	template<class Right> \
-	Expression<Name<Right>> operator OP(const Expression<Right> &right) { \
-		return {right}; \
-	}
-	SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Inc, ++)
-	SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Dec, --)
-	SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Not, !)
+} /*exit expression:: namespace */ \
+template<class A> \
+Expression<expression::Name<A>> operator OP(const Expression<A> &a) { \
+	return {a}; \
+} \
+namespace expression {
+	SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Neg, -)
 #undef SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX
-*/
 
 #define SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Name, OP) \
 	template<class A, class B> \
@@ -208,7 +219,7 @@ namespace expression {
 			return func(a.get(i)); \
 		} \
 	};
-	
+
 	template<class A>
 	A fastAbs(const A &a) {
 		return std::abs(a);
@@ -395,6 +406,10 @@ struct CachedResults {
 
 	template<typename V>
 	using WritableReal = typename Linear::template WritableReal<V>;
+	template<typename V>
+	using WritableComplex = typename Linear::template WritableComplex<V>;
+	template<typename V>
+	using WritableSplit = typename Linear::template WritableSplit<V>;
 	
 	CachedResults(Linear &linear) : linear(linear) {}
 	
@@ -411,6 +426,30 @@ struct CachedResults {
 			return expr.pointer;
 		}
 		ConstRealPointer<float> real(WritableReal<float> expr, size_t) {
+			return expr.pointer;
+		}
+		template<class Expr>
+		ConstComplexPointer<float> complex(Expr expr, size_t size) {
+			auto chunk = (*this)(size*2);
+			linear.fill((ComplexPointer<float>)chunk, expr, size);
+			return chunk;
+		}
+		ConstComplexPointer<float> complex(expression::ReadableComplex<float> expr, size_t) {
+			return expr.pointer;
+		}
+		ConstComplexPointer<float> complex(WritableComplex<float> expr, size_t) {
+			return expr.pointer;
+		}
+		template<class Expr>
+		ConstSplitPointer<float> split(Expr expr, size_t size) {
+			SplitPointer<float> chunk{(*this)(size), (*this)(size)};
+			linear.fill(chunk, expr, size);
+			return chunk;
+		}
+		ConstSplitPointer<float> split(expression::ReadableSplit<float> expr, size_t) {
+			return expr.pointer;
+		}
+		ConstSplitPointer<float> split(WritableSplit<float> expr, size_t) {
 			return expr.pointer;
 		}
 	private:
@@ -441,6 +480,30 @@ struct CachedResults {
 			return expr.pointer;
 		}
 		ConstRealPointer<double> real(WritableReal<double> expr, size_t) {
+			return expr.pointer;
+		}
+		template<class Expr>
+		ConstComplexPointer<double> complex(Expr expr, size_t size) {
+			auto chunk = (*this)(size*2);
+			linear.fill((ConstComplexPointer<double>)chunk, expr, size);
+			return chunk;
+		}
+		ConstComplexPointer<double> complex(expression::ReadableComplex<double> expr, size_t) {
+			return expr.pointer;
+		}
+		ConstComplexPointer<double> complex(WritableComplex<double> expr, size_t) {
+			return expr.pointer;
+		}
+		template<class Expr>
+		ConstSplitPointer<double> split(Expr expr, size_t size) {
+			SplitPointer<double> chunk{(*this)(size), (*this)(size)};
+			linear.fill(chunk, expr, size);
+			return chunk;
+		}
+		ConstSplitPointer<double> split(expression::ReadableSplit<double> expr, size_t) {
+			return expr.pointer;
+		}
+		ConstSplitPointer<double> split(WritableSplit<double> expr, size_t) {
 			return expr.pointer;
 		}
 	private:
@@ -607,7 +670,12 @@ protected:
 	}
 };
 
-// SFINAE template for checking that an expression naturally returns a particular item type
+/* SFINAE template for checking that an expression naturally returns a particular item type
+
+e.g.
+	template<class A>
+	ItemType<A, float, void> fill(...)
+*/
 template<class InputExpr, typename Item, class OutputExpr>
 using ItemType = typename std::enable_if<
 	std::is_same<
