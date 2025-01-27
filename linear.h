@@ -26,7 +26,7 @@ struct ConstSplitPointer {
 	ConstSplitPointer(ConstRealPointer<V> real, ConstRealPointer<V> imag) : real(real), imag(imag) {}
 
 	// Array-like access for convenience
-	std::complex<V> operator[](std::ptrdiff_t i) const {
+	const std::complex<V> operator[](std::ptrdiff_t i) const {
 		return {real[i], imag[i]};
 	}
 };
@@ -40,7 +40,7 @@ struct SplitPointer {
 	}
 
 	// Array-like access for convenience
-	std::complex<V> operator[](std::ptrdiff_t i) const {
+	const std::complex<V> operator[](std::ptrdiff_t i) const {
 		return {real[i], imag[i]};
 	}
 };
@@ -653,10 +653,23 @@ struct LinearImplBase {
 			pointer[i] = expr.get(i);
 		}
 	}
+	template<class V, class Expr>
+	void fill(SplitPointer<V> pointer, Expr expr, size_t size) {
+		for (size_t i = 0; i < size; ++i) {
+			std::complex<V> v = expr.get(i);
+			pointer.real[i] = v.real();
+			pointer.imag[i] = v.imag();
+		}
+	}
 
 	// Remove the Expression<...> layer, so the simplification template-matching works
 	template<class Pointer, class Expr>
 	void fill(Pointer pointer, Expression<Expr> expr, size_t size) {
+		return self().fill(pointer, (Expr &)expr, size);
+	};
+	// Remove the Expression<...> layer, so the simplification template-matching works
+	template<class V, class Expr>
+	void fill(SplitPointer<V> pointer, Expression<Expr> expr, size_t size) {
 		return self().fill(pointer, (Expr &)expr, size);
 	};
 

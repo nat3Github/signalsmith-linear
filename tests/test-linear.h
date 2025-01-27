@@ -4,6 +4,33 @@
 
 #include <type_traits>
 
+template<class ArrayLike>
+auto getAssignable(ArrayLike &arr, size_t i) -> decltype(arr[i]) & {
+	return arr[i];
+}
+
+template<typename V>
+struct ComplexProxy {
+	V &real, &imag;
+	
+	ComplexProxy(V &real, V &imag) : real(real), imag(imag) {}
+	
+	operator std::complex<V>() const {
+		return {real, imag};
+	}
+	
+	ComplexProxy & operator=(std::complex<V> v) {
+		real = v.real();
+		imag = v.imag();
+		return *this;
+	}
+};
+
+template<typename V>
+ComplexProxy<V> getAssignable(signalsmith::linear::SplitPointer<V> pointer, size_t i) {
+	return {pointer.real[i], pointer.imag[i]};
+}
+
 template<class Op, int typeA, int typeB>
 struct OpVoidAB {
 	Op op;
@@ -13,7 +40,8 @@ struct OpVoidAB {
 		auto a = data.template get<typeA>(0);
 		auto b = data.template get<typeB>(1);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b[i]);
+			auto &&ai = getAssignable(a, i);
+			op.opRef(ai, b[i]);
 		}
 	}
 
@@ -34,7 +62,8 @@ struct OpVoidABk {
 		auto a = data.template get<typeA>(0);
 		auto b = data.template get<typeB>(1)[0]; // scalar value
 		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b);
+			auto &&ai = getAssignable(a, i);
+			op.opRef(ai, b);
 		}
 	}
 
@@ -45,18 +74,6 @@ struct OpVoidABk {
 		op.op(linear.wrap(a, data.size), b);
 	}
 };
-template<class Op>
-using OpVoidArBrk = OpVoidABk<Op, 0, 0>;
-template<class Op>
-using OpVoidArBpk = OpVoidABk<Op, 0, 1>;
-template<class Op>
-using OpVoidArBck = OpVoidABk<Op, 0, 2>;
-template<class Op>
-using OpVoidAcBrk = OpVoidABk<Op, 2, 0>;
-template<class Op>
-using OpVoidAcBpk = OpVoidABk<Op, 2, 1>;
-template<class Op>
-using OpVoidAcBck = OpVoidABk<Op, 2, 2>;
 
 template<class Op, int typeA, int typeB, int typeC>
 struct OpVoidABC {
@@ -68,7 +85,8 @@ struct OpVoidABC {
 		auto b = data.template get<typeB>(1);
 		auto c = data.template get<typeC>(2);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b[i], c[i]);
+			auto &&ai = getAssignable(a, i);
+			op.opRef(ai, b[i], c[i]);
 		}
 	}
 
@@ -92,7 +110,8 @@ struct OpVoidABCk {
 		auto b = data.template get<typeB>(1);
 		auto c = data.template get<typeC>(2)[0];
 		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b[i], c);
+			auto &&ai = getAssignable(a, i);
+			op.opRef(ai, b[i], c);
 		}
 	}
 
@@ -116,7 +135,8 @@ struct OpVoidABkC {
 		auto b = data.template get<typeB>(1)[0];
 		auto c = data.template get<typeC>(2);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b, c[i]);
+			auto &&ai = getAssignable(a, i);
+			op.opRef(ai, b, c[i]);
 		}
 	}
 
@@ -141,7 +161,8 @@ struct OpVoidABCD {
 		auto c = data.template get<typeC>(2);
 		auto d = data.template get<typeD>(3);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b[i], c[i], d[i]);
+			auto &&ai = getAssignable(a, i);
+			op.opRef(ai, b[i], c[i], d[i]);
 		}
 	}
 
@@ -168,7 +189,8 @@ struct OpVoidABCDE {
 		auto d = data.template get<typeD>(3);
 		auto e = data.template get<typeE>(4);
 		for (size_t i = 0; i < data.size; ++i) {
-			op.opRef(a[i], b[i], c[i], d[i], e[i]);
+			auto &&ai = getAssignable(a, i);
+			op.opRef(ai, b[i], c[i], d[i], e[i]);
 		}
 	}
 
@@ -316,7 +338,30 @@ struct TestLinear {
 			RunData<float> refDataFloat = dataFloat;
 			opWithArgs.reference(refDataDouble);
 			opWithArgs.reference(refDataFloat);
-			{
+
+			{ // check the Fallback matches
+				RunData<double> copyDouble(n);
+				RunData<float> copyFloat(n);
+				opWithArgs.linear(linearFallback, copyDouble);
+				opWithArgs.linear(linearFallback, copyFloat);
+				if (copyDouble.distance(refDataDouble) > 1e-12*n) {
+					std::cout << "fallback double: n = " << n << ", error = " << copyDouble.distance(refDataDouble) << "\n";
+					std::cout << "\nReference:\n";
+					refDataDouble.log();
+					std::cout << "\nFallback:\n";
+					copyDouble.log();
+					abort();
+				}
+				if (copyFloat.distance(refDataFloat) > 1e-6*n) {
+					std::cout << "fallback float: n = " << n << ", error = " << copyFloat.distance(refDataFloat) << "\n";
+					std::cout << "\nReference:\n";
+					refDataFloat.log();
+					std::cout << "\nFallback:\n";
+					copyFloat.log();
+					abort();
+				}
+			}
+			{ // check the Linear matches
 				RunData<double> copyDouble(n);
 				RunData<float> copyFloat(n);
 				opWithArgs.linear(linear, copyDouble);
@@ -331,28 +376,6 @@ struct TestLinear {
 				}
 				if (copyFloat.distance(refDataFloat) > 1e-6*n) {
 					std::cout << "Linear float: n = " << n << ", error = " << copyFloat.distance(refDataFloat) << "\n";
-					std::cout << "\nReference:\n";
-					refDataFloat.log();
-					std::cout << "\nLinear:\n";
-					copyFloat.log();
-					abort();
-				}
-			}
-			{
-				RunData<double> copyDouble(n);
-				RunData<float> copyFloat(n);
-				opWithArgs.linear(linearFallback, copyDouble);
-				opWithArgs.linear(linearFallback, copyFloat);
-				if (copyDouble.distance(refDataDouble) > 1e-12*n) {
-					std::cout << "fallback double: n = " << n << ", error = " << copyDouble.distance(refDataDouble) << "\n";
-					std::cout << "\nReference:\n";
-					refDataDouble.log();
-					std::cout << "\nLinear:\n";
-					copyDouble.log();
-					abort();
-				}
-				if (copyFloat.distance(refDataFloat) > 1e-6*n) {
-					std::cout << "fallback float: n = " << n << ", error = " << copyFloat.distance(refDataFloat) << "\n";
 					std::cout << "\nReference:\n";
 					refDataFloat.log();
 					std::cout << "\nLinear:\n";
@@ -421,7 +444,7 @@ std::complex<double> toVal(std::complex<double> v) {return v;}
 struct Name { \
 	const char *name = #expr; \
 	template<class A, class B> \
-	void opRef(A &&a, B &&rb) const { \
+	void opRef(A &a, B &&rb) const { \
 		auto b = toVal(rb); \
 		refExpr; \
 	} \
@@ -434,7 +457,7 @@ struct Name { \
 struct Name { \
 	const char *name = #expr; \
 	template<class A, class B, class C> \
-	void opRef(A &&a, B &&rb, C &&rc) const { \
+	void opRef(A &a, B &&rb, C &&rc) const { \
 		auto b = toVal(rb); \
 		auto c = toVal(rc); \
 		refExpr; \
@@ -448,7 +471,7 @@ struct Name { \
 struct Name { \
 	const char *name = #expr; \
 	template<class A, class B, class C, class D> \
-	void opRef(A &&a, B &&rb, C &&rc, D &&rd) const { \
+	void opRef(A &a, B &&rb, C &&rc, D &&rd) const { \
 		auto b = toVal(rb); \
 		auto c = toVal(rc); \
 		auto d = toVal(rd); \
@@ -463,7 +486,7 @@ struct Name { \
 struct Name { \
 	const char *name = #expr; \
 	template<class A, class B, class C, class D, class E> \
-	void opRef(A &&a, B &&rb, C &&rc, D &&rd, E &&re) const { \
+	void opRef(A &a, B &&rb, C &&rc, D &&rd, E &&re) const { \
 		auto b = toVal(rb); \
 		auto c = toVal(rc); \
 		auto d = toVal(rd); \
@@ -556,6 +579,7 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "complex");
 
+		test.addOp<OpVoidAB<Assign, 2, 2>>("Assign");
 		test.addOp<OpVoidAB<Neg, 2, 2>>("Neg");
 		test.addOp<OpVoidAB<Conj, 2, 2>>("Conj");
 
@@ -585,6 +609,7 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "split");
 
+		test.addOp<OpVoidAB<Assign, 3, 3>>("Assign");
 		test.addOp<OpVoidAB<Neg, 3, 3>>("Neg");
 		test.addOp<OpVoidAB<Conj, 3, 3>>("Conj");
 

@@ -164,6 +164,13 @@ struct RunData {
 				error2 += std::norm(thisVector[i] - otherVector[i]);
 			}
 		}
+		for (size_t vi = 0; vi < splits.size(); ++vi) {
+			auto thisVector = splits[vi];
+			auto otherVector = other.splits[vi];
+			for (size_t i = 0; i < size; ++i) {
+				error2 += std::norm(thisVector[i] - otherVector[i]);
+			}
+		}
 		
 		return std::sqrt(error2/size);
 	}
@@ -178,6 +185,9 @@ struct RunData {
 		for (size_t i = 0; i < complexes.size(); ++i) {
 			std::cout << "\tc" << i;
 		}
+		for (size_t i = 0; i < splits.size(); ++i) {
+			std::cout << "\ts" << i;
+		}
 		std::cout << "\n";
 		for (size_t i = 0; i < size; ++i) {
 			for (auto *vector : reals) {
@@ -187,6 +197,9 @@ struct RunData {
 				std::cout << "\t" << vector[i];
 			}
 			for (auto *vector : complexes) {
+				std::cout << "\t" << vector[i];
+			}
+			for (auto vector : splits) {
 				std::cout << "\t" << vector[i];
 			}
 			std::cout << "\n";
