@@ -69,12 +69,9 @@ struct LinearImpl<true> : public LinearImplBase<true> {
 		cached.reserveDoubles(size*4);
 	}
 
-	template<int N> struct priority : priority<N - 1> {};
-	template<> struct priority<0>{};
-
 	template<class Pointer, class Expr>
 	void fill(Pointer pointer, Expr expr, size_t size) {
-		fastFill(pointer, expr, size, priority<4*5>{});
+		fillBasic(pointer, expr, size);
 	}
 
 	template<class Pointer, class Expr>
@@ -83,39 +80,65 @@ struct LinearImpl<true> : public LinearImplBase<true> {
 	};
 
 private:
-
 	template<class Pointer, class Expr>
-	void fastFill(Pointer pointer, Expr expr, size_t size, const priority<0> &) {
+	void fillBasic(Pointer pointer, Expr expr, size_t size) {
 		basicFillWarning<Expr>();
 		for (size_t i = 0; i < size; ++i) {
 			pointer[i] = expr.get(i);
 		}
 	}
 
-#define SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Name, vDSP_func, priorityN) \
+// Forwards .fill() to .fillName(), but doesn't define that
+#define SIGNALSMITH_AUDIO_LINEAR_OP2_R(Name) \
+public: \
 	template<class A, class B> \
-	void fastFill(RealPointer<float> pointer, expression::Name<A, B> expr, size_t size, const priority<4*priorityN> &) { \
+	void fill(RealPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+	template<class A, class B> \
+	void fill(RealPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+// Real -> real operators where the vDSP function arguments are the other way around for some reason
+#define SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Name, vDSP_func) \
+	template<class A, class B> \
+	void fill##Name(RealPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto floats = cached.floatScope(); \
 		auto *a = floats.real(expr.a, size); \
 		auto *b = floats.real(expr.b, size); \
 		vDSP_func(b, 1, a, 1, pointer, 1, size); \
 	} \
 	template<class A, class B> \
-	void fastFill(RealPointer<double> pointer, expression::Name<A, B> expr, size_t size, const priority<4*priorityN> &) { \
+	void fill##Name(RealPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto doubles = cached.doubleScope(); \
 		auto *a = doubles.real(expr.a, size); \
 		auto *b = doubles.real(expr.b, size); \
 		vDSP_func##D(b, 1, a, 1, pointer, 1, size); \
 	}
-	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Add, vDSP_vadd, 1);
-	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Sub, vDSP_vsub, 2);
-	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Mul, vDSP_vmul, 3);
-	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Div, vDSP_vdiv, 4);
+	SIGNALSMITH_AUDIO_LINEAR_OP2_R(Add)
+	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Add, vDSP_vadd);
+	SIGNALSMITH_AUDIO_LINEAR_OP2_R(Sub)
+	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Sub, vDSP_vsub);
+	SIGNALSMITH_AUDIO_LINEAR_OP2_R(Mul)
+	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Mul, vDSP_vmul);
+	SIGNALSMITH_AUDIO_LINEAR_OP2_R(Div)
+	SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR(Div, vDSP_vdiv);
 #undef SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RR
+#undef SIGNALSMITH_AUDIO_LINEAR_OP2_R
 
-#define SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(NameInner, Name, vDSP_func, priorityN) \
+// Forwards .fillName() to .fillNameName2(), but doesn't define that
+#define SIGNALSMITH_AUDIO_LINEAR_Op3L_R(Name, NameL) \
 	template<class A, class B, class C> \
-	void fastFill(RealPointer<float> pointer, expression::Name<expression::NameInner<A, B>, C> expr, size_t size, const priority<4*priorityN> &) { \
+	void fill##Name(RealPointer<float> pointer, expression::Name<expression::NameL<A, B>, C> expr, size_t size) { \
+		fill##Name##NameL(pointer, expr, size); \
+	} \
+	template<class A, class B, class C> \
+	void fill##Name(RealPointer<double> pointer, expression::Name<expression::NameL<A, B>, C> expr, size_t size) { \
+		fill##Name##NameL(pointer, expr, size); \
+	}
+#define SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(Name, NameL, vDSP_func) \
+	template<class A, class B, class C> \
+	void fill##Name##NameL(RealPointer<float> pointer, expression::Name<expression::NameL<A, B>, C> expr, size_t size) { \
 		auto floats = cached.floatScope(); \
 		auto *a = floats.real(expr.a.a, size); \
 		auto *b = floats.real(expr.a.b, size); \
@@ -123,36 +146,59 @@ private:
 		vDSP_func(a, 1, b, 1, c, 1, pointer, 1, size); \
 	} \
 	template<class A, class B, class C> \
-	void fastFill(RealPointer<double> pointer, expression::Name<expression::NameInner<A, B>, C> expr, size_t size, const priority<4*priorityN> &) { \
+	void fill##Name##NameL(RealPointer<double> pointer, expression::Name<expression::NameL<A, B>, C> expr, size_t size) { \
 		auto doubles = cached.doubleScope(); \
 		auto *a = doubles.real(expr.a.a, size); \
 		auto *b = doubles.real(expr.a.b, size); \
 		auto *c = doubles.real(expr.b, size); \
 		vDSP_func##D(a, 1, b, 1, c, 1, pointer, 1, size); \
 	}
-#define SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(NameInner, Name, vDSP_func, priorityN) \
-	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(NameInner, Name, vDSP_func, priorityN) \
-	template<class A, class B, class C> \
-	void fastFill(RealPointer<float> pointer, expression::Name<C, expression::NameInner<A, B>> expr, size_t size, const priority<4*priorityN + 1> &) { \
-		auto floats = cached.floatScope(); \
-		auto *a = floats.real(expr.b.a, size); \
-		auto *b = floats.real(expr.b.b, size); \
-		auto *c = floats.real(expr.a, size); \
-		vDSP_func(a, 1, b, 1, c, 1, pointer, 1, size); \
-	} \
-	template<class A, class B, class C> \
-	void fastFill(RealPointer<double> pointer, expression::Name<C, expression::NameInner<A, B>> expr, size_t size, const priority<4*priorityN + 1> &) { \
-		auto doubles = cached.doubleScope(); \
-		auto *a = doubles.real(expr.b.a, size); \
-		auto *b = doubles.real(expr.b.b, size); \
-		auto *c = doubles.real(expr.a, size); \
-		vDSP_func##D(a, 1, b, 1, c, 1, pointer, 1, size); \
-	}
-	SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(Add, Mul, vDSP_vam, 0)
-	SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(Mul, Add, vDSP_vma, 1)
-	SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(Sub, Mul, vDSP_vsbm, 2)
-	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(Mul, Sub, vDSP_vmsb, 3)
+	SIGNALSMITH_AUDIO_LINEAR_Op3L_R(Mul, Add)
+	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(Mul, Add, vDSP_vam)
+
 #undef SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR
+#undef SIGNALSMITH_AUDIO_LINEAR_Op3L_R
+
+//	template<class A, class B, class C> \
+//	void fill#Name(RealPointer<float> pointer, expression::Name<expression::NameInner<A, B>, C> expr, size_t size, const priority<4*priorityN> &) { \
+//		auto floats = cached.floatScope(); \
+//		auto *a = floats.real(expr.a.a, size); \
+//		auto *b = floats.real(expr.a.b, size); \
+//		auto *c = floats.real(expr.b, size); \
+//		vDSP_func(a, 1, b, 1, c, 1, pointer, 1, size); \
+//	} \
+//	template<class A, class B, class C> \
+//	void fastFill(RealPointer<double> pointer, expression::Name<expression::NameInner<A, B>, C> expr, size_t size, const priority<4*priorityN> &) { \
+//		auto doubles = cached.doubleScope(); \
+//		auto *a = doubles.real(expr.a.a, size); \
+//		auto *b = doubles.real(expr.a.b, size); \
+//		auto *c = doubles.real(expr.b, size); \
+//		vDSP_func##D(a, 1, b, 1, c, 1, pointer, 1, size); \
+//	}
+
+//#define SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(NameInner, Name, vDSP_func, priorityN) \
+//	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(NameInner, Name, vDSP_func, priorityN) \
+//	template<class A, class B, class C> \
+//	void fastFill(RealPointer<float> pointer, expression::Name<C, expression::NameInner<A, B>> expr, size_t size, const priority<4*priorityN + 1> &) { \
+//		auto floats = cached.floatScope(); \
+//		auto *a = floats.real(expr.b.a, size); \
+//		auto *b = floats.real(expr.b.b, size); \
+//		auto *c = floats.real(expr.a, size); \
+//		vDSP_func(a, 1, b, 1, c, 1, pointer, 1, size); \
+//	} \
+//	template<class A, class B, class C> \
+//	void fastFill(RealPointer<double> pointer, expression::Name<C, expression::NameInner<A, B>> expr, size_t size, const priority<4*priorityN + 1> &) { \
+//		auto doubles = cached.doubleScope(); \
+//		auto *a = doubles.real(expr.b.a, size); \
+//		auto *b = doubles.real(expr.b.b, size); \
+//		auto *c = doubles.real(expr.a, size); \
+//		vDSP_func##D(a, 1, b, 1, c, 1, pointer, 1, size); \
+//	}
+//	SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(Add, Mul, vDSP_vam, 0)
+//	SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(Mul, Add, vDSP_vma, 1)
+//	SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(Sub, Mul, vDSP_vsbm, 2)
+//	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(Mul, Sub, vDSP_vmsb, 3)
+//#undef SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR
 
 protected:
 	CachedResults<LinearImpl, 32> cached;
