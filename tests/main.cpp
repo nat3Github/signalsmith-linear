@@ -6,7 +6,11 @@
 
 #include <cstdlib>
 
+#include "./stop-denormals.h"
+
 int main(int argc, char *argv[]) {
+	StopDenormals scoped;
+
 #ifdef SIGNALSMITH_USE_ACCELERATE
 	std::cout << u8"✅ SIGNALSMITH_USE_ACCELERATE\n";
 #else
