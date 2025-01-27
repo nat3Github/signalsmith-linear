@@ -520,6 +520,7 @@ TEST_EXPR2(Real, a = std::real(b), a = b.real());
 TEST_EXPR2(Imag, a = std::imag(b), a = b.imag());
 TEST_EXPR2(Arg, a = std::arg(b), a = b.arg());
 TEST_EXPR2(Floor, a = std::floor(b), a = b.floor());
+TEST_EXPR2(Ceil, a = std::ceil(b), a = b.ceil());
 TEST_EXPR2(MinusFloor, a = b - std::floor(b), a = b - b.floor());
 
 TEST_EXPR2(AbsNeg, a = -std::abs(b), a = -b.abs());
@@ -561,6 +562,7 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 		test.addOp<OpVoidAB<Cbrt, 0, 0>>("Cbrt");
 		test.addOp<OpVoidAB<Floor, 0, 0>>("Floor");
 		test.addOp<OpVoidAB<MinusFloor, 0, 0>>("MinusFloor");
+		test.addOp<OpVoidAB<Ceil, 0, 0>>("Ceil");
 	}
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "realConstants");

@@ -70,27 +70,26 @@ struct WritableExpression;
 
 // Expression templates, which always hold const pointers
 namespace expression {
-	size_t minSize(size_t a, size_t b) {
-		return std::min<size_t>(a, b);
-	}
-	
 	// All base Exprs inherit from this, so we can SFINAE-test for them
 	struct Base {};
 	void mustBeExpr(const Base &) {}
+
+	template<typename V>
+	struct ConstantExpr : public Base {
+		EXPRESSION_NAME(Constant, "V");
+		V value;
+
+		ConstantExpr(V value) : value(value) {}
 		
+		const V get(std::ptrdiff_t) const {
+			return value;
+		}
+	};
+
 	template<class V, typename=void>
 	struct ExprTest {
-		struct Constant : public Base {
-			EXPRESSION_NAME(Constant, "V");
-			V value;
+		using Constant = ConstantExpr<V>;
 
-			Constant(V value) : value(value) {}
-			
-			const V get(std::ptrdiff_t) const {
-				return value;
-			}
-		};
-		
 		static Constant wrap(const V &v) {
 			return {v};
 		}
@@ -144,10 +143,12 @@ namespace expression {
 			return {pointer.real[i], pointer.imag[i]};
 		}
 	};
+}
 	
-	// + - * / % ^ & | ~ ! = < > += -= *= /= %= ^= &= |= << >> >>= <<= == != <= >= <=>(since C++20) && || ++ -- , ->* -> ( ) [ ]
+// + - * / % ^ & | ~ ! = < > += -= *= /= %= ^= &= |= << >> >>= <<= == != <= >= <=>(since C++20) && || ++ -- , ->* -> ( ) [ ]
 
 #define SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Name, OP) \
+namespace expression { \
 	template<class A> \
 	struct Name : public Base { \
 		EXPRESSION_NAME(Name, (#Name "<") + A::name() + ">"); \
@@ -157,22 +158,25 @@ namespace expression {
 			return OP a.get(i); \
 		} \
 	}; \
-} /*exit expression:: namespace */ \
+	template<class A> \
+	Name<A> make##Name(A a) { \
+		return {a}; \
+	} \
+} \
 template<class A> \
 Expression<expression::Name<A>> operator OP(const Expression<A> &a) { \
 	return {a}; \
-} \
-namespace expression {
-	SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Neg, -)
+}
+SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Neg, -)
+// Two negatives cancel out
+template<class A>
+Expression<A> operator-(const Expression<expression::Neg<A>> &expr) { \
+	return expr.a;
+}
 #undef SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX
 
 #define SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Name, OP) \
-	template<class A, class B> \
-	struct Name; \
-	template<class A, class B> \
-	Name<A, B> make##Name(A a, B b) { \
-		return {a, b}; \
-	} \
+namespace expression { \
 	template<class A, class B> \
 	struct Name : public Base { \
 		EXPRESSION_NAME(Name, (#Name "<") + A::name() + "," + B::name() + ">"); \
@@ -183,26 +187,30 @@ namespace expression {
 			return a.get(i) OP b.get(i); \
 		} \
 	}; \
-} /*exit expression:: namespace */ \
+	template<class A, class B> \
+	Name<A, B> make##Name(A a, B b) { \
+		return {a, b}; \
+	} \
+} \
 template<class A, class B> \
 const Expression<expression::Name<A, B>> operator OP(const Expression<A> &a, const Expression<B> &b) { \
 	return {a, b}; \
 } \
 template<class A, class B> \
-auto operator OP(const Expression<A> &a, const B &b) -> const Expression<expression::Name<A, expression::Constant<B>>> { \
+const Expression<expression::Name<A, expression::Constant<B>>> operator OP(const Expression<A> &a, const B &b) { \
 	return {a, b}; \
 } \
 template<class A, class B> \
-auto operator OP(const A &a, const Expression<B> &b) -> const Expression<expression::Name<expression::Constant<A>, B>> { \
+const Expression<expression::Name<expression::Constant<A>, B>> operator OP(const A &a, const Expression<B> &b) { \
 	return {a, b}; \
-} \
-namespace expression {
-	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Add, +)
-	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Sub, -)
-	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Mul, *)
-	SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Div, /)
+}
+SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Add, +)
+SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Mul, *)
+SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Sub, -)
+SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Div, /)
 #undef SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX
 
+namespace expression {
 #define SIGNALSMITH_AUDIO_LINEAR_FUNC1(Name, func) \
 	template<class A> \
 	struct Name; \
@@ -249,12 +257,13 @@ namespace expression {
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sqrt, std::sqrt)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Cbrt, std::cbrt)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Floor, std::floor)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Ceil, std::ceil)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Conj, std::conj)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Real, std::real)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Imag, std::imag)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Arg, std::arg)
 #undef SIGNALSMITH_AUDIO_LINEAR_FUNC1
-}
+} // expression::
 
 template<class BaseExpr>
 struct Expression : public BaseExpr {
@@ -310,10 +319,15 @@ struct Expression : public BaseExpr {
 	const Expression<expression::Floor<BaseExpr>> floor() const {
 		return {*this};
 	}
+	const Expression<expression::Ceil<BaseExpr>> ceil() const {
+		return {*this};
+	}
 };
 template<class BaseExpr>
 struct WritableExpression : public Expression<BaseExpr> {
 	using Expression<BaseExpr>::Expression;
+
+	WritableExpression(const WritableExpression &other) = default;
 
 	template<class Expr>
 	WritableExpression & operator=(const Expr &expr) {
