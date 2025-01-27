@@ -443,6 +443,17 @@ struct CachedResults {
 			return expr.pointer;
 		}
 		template<class Expr>
+		ConstRealPointer<float> real(Expr expr, size_t size, RealPointer<float> canUse) {
+			linear.fill(canUse, expr, size);
+			return canUse;
+		}
+		ConstRealPointer<float> real(expression::ReadableReal<float> expr, size_t, RealPointer<float>) {
+			return expr.pointer;
+		}
+		ConstRealPointer<float> real(WritableReal<float> expr, size_t, RealPointer<float>) {
+			return expr.pointer;
+		}
+		template<class Expr>
 		ConstComplexPointer<float> complex(Expr expr, size_t size) {
 			auto chunk = (*this)(size*2);
 			linear.fill((ComplexPointer<float>)chunk, expr, size);
@@ -455,6 +466,17 @@ struct CachedResults {
 			return expr.pointer;
 		}
 		template<class Expr>
+		ConstComplexPointer<float> complex(Expr expr, size_t size, ComplexPointer<float> canUse) {
+			linear.fill(canUse, expr, size);
+			return canUse;
+		}
+		ConstComplexPointer<float> complex(expression::ReadableComplex<float> expr, size_t, ComplexPointer<float>) {
+			return expr.pointer;
+		}
+		ConstComplexPointer<float> complex(WritableComplex<float> expr, size_t, ComplexPointer<float>) {
+			return expr.pointer;
+		}
+		template<class Expr>
 		ConstSplitPointer<float> split(Expr expr, size_t size) {
 			SplitPointer<float> chunk{(*this)(size), (*this)(size)};
 			linear.fill(chunk, expr, size);
@@ -464,6 +486,17 @@ struct CachedResults {
 			return expr.pointer;
 		}
 		ConstSplitPointer<float> split(WritableSplit<float> expr, size_t) {
+			return expr.pointer;
+		}
+		template<class Expr>
+		ConstSplitPointer<float> split(Expr expr, size_t size, SplitPointer<float> canUse) {
+			linear.fill(canUse, expr, size);
+			return canUse;
+		}
+		ConstSplitPointer<float> split(expression::ReadableSplit<float> expr, size_t, SplitPointer<float>) {
+			return expr.pointer;
+		}
+		ConstSplitPointer<float> split(WritableSplit<float> expr, size_t, SplitPointer<float>) {
 			return expr.pointer;
 		}
 	private:
@@ -497,15 +530,37 @@ struct CachedResults {
 			return expr.pointer;
 		}
 		template<class Expr>
+		ConstRealPointer<double> real(Expr expr, size_t size, RealPointer<double> canUse) {
+			linear.fill(canUse, expr, size);
+			return canUse;
+		}
+		ConstRealPointer<double> real(expression::ReadableReal<double> expr, size_t, RealPointer<double>) {
+			return expr.pointer;
+		}
+		ConstRealPointer<double> real(WritableReal<double> expr, size_t, RealPointer<double>) {
+			return expr.pointer;
+		}
+		template<class Expr>
 		ConstComplexPointer<double> complex(Expr expr, size_t size) {
 			auto chunk = (*this)(size*2);
-			linear.fill((ConstComplexPointer<double>)chunk, expr, size);
+			linear.fill((ComplexPointer<double>)chunk, expr, size);
 			return chunk;
 		}
 		ConstComplexPointer<double> complex(expression::ReadableComplex<double> expr, size_t) {
 			return expr.pointer;
 		}
 		ConstComplexPointer<double> complex(WritableComplex<double> expr, size_t) {
+			return expr.pointer;
+		}
+		template<class Expr>
+		ConstComplexPointer<double> complex(Expr expr, size_t size, ComplexPointer<double> canUse) {
+			linear.fill(canUse, expr, size);
+			return canUse;
+		}
+		ConstComplexPointer<double> complex(expression::ReadableComplex<double> expr, size_t, ComplexPointer<double>) {
+			return expr.pointer;
+		}
+		ConstComplexPointer<double> complex(WritableComplex<double> expr, size_t, ComplexPointer<double>) {
 			return expr.pointer;
 		}
 		template<class Expr>
@@ -518,6 +573,17 @@ struct CachedResults {
 			return expr.pointer;
 		}
 		ConstSplitPointer<double> split(WritableSplit<double> expr, size_t) {
+			return expr.pointer;
+		}
+		template<class Expr>
+		ConstSplitPointer<double> split(Expr expr, size_t size, SplitPointer<double> canUse) {
+			linear.fill(canUse, expr, size);
+			return canUse;
+		}
+		ConstSplitPointer<double> split(expression::ReadableSplit<double> expr, size_t, SplitPointer<double>) {
+			return expr.pointer;
+		}
+		ConstSplitPointer<double> split(WritableSplit<double> expr, size_t, SplitPointer<double>) {
 			return expr.pointer;
 		}
 	private:
@@ -681,7 +747,7 @@ struct LinearImplBase {
 	void fill(Pointer pointer, Expression<Expr> expr, size_t size) {
 		return self().fill(pointer, (Expr &)expr, size);
 	};
-	// Remove the Expression<...> layer, so the simplification template-matching works
+	// Separate otherwise it's ambiguous between the two previous ones
 	template<class V, class Expr>
 	void fill(SplitPointer<V> pointer, Expression<Expr> expr, size_t size) {
 		return self().fill(pointer, (Expr &)expr, size);

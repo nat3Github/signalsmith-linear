@@ -95,7 +95,7 @@ struct LinearImpl<true> : public LinearImplBase<true> {
 	};
 	template<class Pointer, class Expr>
 	void fill(Pointer pointer, WritableExpression<Expr> expr, size_t size) {
-		return self().fill(pointer, (Expr &)expr, size);
+		return self().fill(pointer, (Expression<Expr> &)expr, size);
 	};
 
 	void fill(RealPointer<float> pointer, expression::ReadableReal<float> expr, size_t size) {
@@ -254,14 +254,14 @@ private:
 	template<class A> \
 	ItemType<A, float, void> fill##Name(RealPointer<float> pointer, expression::Name<A> expr, size_t size) { \
 		auto floats = cached.floatScope(); \
-		auto *a = floats.real(expr.a, size); \
+		auto *a = floats.real(expr.a, size, pointer); \
 		int intSize = int(size); \
 		vForce_float(pointer, a, &intSize); \
 	} \
 	template<class A> \
 	ItemType<A, double, void> fill##Name(RealPointer<double> pointer, expression::Name<A> expr, size_t size) { \
 		auto doubles = cached.doubleScope(); \
-		auto *a = doubles.real(expr.a, size); \
+		auto *a = doubles.real(expr.a, size, pointer); \
 		int intSize = int(size); \
 		vForce_double(pointer, a, &intSize); \
 	}
@@ -301,14 +301,14 @@ private:
 	template<class A, class B> \
 	void fill##Name(RealPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto floats = cached.floatScope(); \
-		auto *a = floats.real(expr.a, size); \
+		auto *a = floats.real(expr.a, size, pointer); \
 		auto *b = floats.real(expr.b, size); \
 		vDSP_func(b, 1, a, 1, pointer, 1, size); \
 	} \
 	template<class A, class B> \
 	void fill##Name(RealPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto doubles = cached.doubleScope(); \
-		auto *a = doubles.real(expr.a, size); \
+		auto *a = doubles.real(expr.a, size, pointer); \
 		auto *b = doubles.real(expr.b, size); \
 		vDSP_func##D(b, 1, a, 1, pointer, 1, size); \
 	}
@@ -316,14 +316,14 @@ private:
 	template<class A, class V> \
 	void fill##Name(RealPointer<float> pointer, expression::Name<A, expression::ConstantExpr<V>> expr, size_t size) { \
 		auto floats = cached.floatScope(); \
-		auto *a = floats.real(expr.a, size); \
+		auto *a = floats.real(expr.a, size, pointer); \
 		float b = expr.b.value; \
 		vDSP_func(a, 1, &b, pointer, 1, size); \
 	} \
 	template<class A, class V> \
 	void fill##Name(RealPointer<double> pointer, expression::Name<A, expression::ConstantExpr<V>> expr, size_t size) { \
 		auto doubles = cached.doubleScope(); \
-		auto *a = doubles.real(expr.a, size); \
+		auto *a = doubles.real(expr.a, size, pointer); \
 		double b = expr.b.value; \
 		vDSP_func##D(a, 1, &b, pointer, 1, size); \
 	} \
@@ -331,14 +331,14 @@ private:
 	void fill##Name(RealPointer<float> pointer, expression::Name<expression::ConstantExpr<V>, B> expr, size_t size) { \
 		auto floats = cached.floatScope(); \
 		float a = expr.a.value; \
-		auto *b = floats.real(expr.b, size); \
+		auto *b = floats.real(expr.b, size, pointer); \
 		vDSP_func(b, 1, &a, pointer, 1, size); \
 	} \
 	template<class V, class B> \
 	void fill##Name(RealPointer<double> pointer, expression::Name<expression::ConstantExpr<V>, B> expr, size_t size) { \
 		auto doubles = cached.doubleScope(); \
 		double a = expr.a.value; \
-		auto *b = doubles.real(expr.b, size); \
+		auto *b = doubles.real(expr.b, size, pointer); \
 		vDSP_func##D(b, 1, &a, pointer, 1, size); \
 	}
 	SIGNALSMITH_AUDIO_LINEAR_OP2_R(Add)
@@ -387,7 +387,7 @@ private:
 	template<class A, class B> \
 	void fill##Name(RealPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto floats = cached.floatScope(); \
-		auto *a = floats.real(expr.a, size); \
+		auto *a = floats.real(expr.a, size, pointer); \
 		auto *b = floats.real(expr.b, size); \
 		int intSize = int(size); \
 		vForce_float(pointer, a, b, &intSize); \
@@ -395,7 +395,7 @@ private:
 	template<class A, class B> \
 	void fill##Name(RealPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto doubles = cached.doubleScope(); \
-		auto *a = doubles.real(expr.a, size); \
+		auto *a = doubles.real(expr.a, size, pointer); \
 		auto *b = doubles.real(expr.b, size); \
 		int intSize = int(size); \
 		vForce_double(pointer, a, b, &intSize); \
@@ -421,7 +421,7 @@ private:
 		auto floats = cached.floatScope(); \
 		auto *a = floats.real(expr.a.a, size); \
 		auto *b = floats.real(expr.a.b, size); \
-		auto *c = floats.real(expr.b, size); \
+		auto *c = floats.real(expr.b, size, pointer); \
 		vDSP_func(a, 1, b, 1, c, 1, pointer, 1, size); \
 	} \
 	template<class A, class B, class C> \
@@ -429,7 +429,7 @@ private:
 		auto doubles = cached.doubleScope(); \
 		auto *a = doubles.real(expr.a.a, size); \
 		auto *b = doubles.real(expr.a.b, size); \
-		auto *c = doubles.real(expr.b, size); \
+		auto *c = doubles.real(expr.b, size, pointer); \
 		vDSP_func##D(a, 1, b, 1, c, 1, pointer, 1, size); \
 	}
 	SIGNALSMITH_AUDIO_LINEAR_Op3L_R(Mul, Add)
