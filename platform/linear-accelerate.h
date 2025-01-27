@@ -41,11 +41,16 @@ template<>
 std::string typeName<std::complex<double>>() {
 	return "complex<double>";
 }
+static size_t _basicFillWarningCounter = 1;
+static void basicFillWarningReset() {
+	// All warnings will print again
+	++_basicFillWarningCounter;
+}
 template<class Expr>
-void basicFillWarning() {
-	static bool printed = false;
-	if (!printed) {
-		printed = true;
+static void basicFillWarning() {
+	static size_t counter = 0;
+	if (counter != _basicFillWarningCounter) {
+		counter = _basicFillWarningCounter;
 		std::cerr << "used basic .fill() for " << Expr::name() << " -> " << typeName<decltype(std::declval<Expr>().get(0))>() << "\n";
 	}
 }
@@ -55,7 +60,9 @@ template<>
 struct LinearImpl<true> : public LinearImplBase<true> {
 	using Base = LinearImplBase<true>;
 
-	LinearImpl() : Base(this), cached(*this) {}
+	LinearImpl() : Base(this), cached(*this) {
+		basicFillWarningReset();
+	}
 
 	template<class V>
 	void reserve(size_t) {}
