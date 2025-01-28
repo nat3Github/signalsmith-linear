@@ -656,8 +656,12 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 		test.addOp<OpVoidABC<Sub, 2, 0, 2>>("SubCRC");
 
 		test.addOp<OpVoidABC<Mul, 2, 0, 0>>("MulCRR");
+		test.addOp<OpVoidABC<Mul, 3, 0, 0>>("MulSRR");
 		test.addOp<OpVoidABC<Mul, 2, 2, 0>>("MulCCR");
 		test.addOp<OpVoidABC<Mul, 2, 0, 2>>("MulCRC");
+		test.addOp<OpVoidABC<Mul, 3, 0, 3>>("MulSRS");
+		test.addOp<OpVoidABC<Mul, 2, 0, 3>>("MulCRS");
+		test.addOp<OpVoidABC<Mul, 3, 0, 2>>("MulSRC");
 
 		test.addOp<OpVoidABC<Div, 2, 0, 0>>("DivCRR");
 		test.addOp<OpVoidABC<Div, 2, 2, 0>>("DivCCR");
