@@ -641,6 +641,11 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "mixed");
 		test.addOp<OpVoidAB<Assign, 2, 0>>("AssignCR");
+		test.addOp<OpVoidAB<Neg, 2, 0>>("Neg");
+		test.addOp<OpVoidAB<Neg, 3, 0>>("Neg-Split");
+		test.addOp<OpVoidAB<Abs, 3, 2>>("AbsC-Split");
+		test.addOp<OpVoidAB<Abs, 3, 3>>("AbsS-Split");
+		test.addOp<OpVoidAB<Abs, 3, 0>>("AbsR-Split");
 		
 		test.addOp<OpVoidABC<Add, 2, 0, 0>>("AddCRR");
 		test.addOp<OpVoidABC<Add, 2, 2, 0>>("AddCCR");

@@ -63,7 +63,6 @@ static void basicFillWarning() {
 	}
 }
 
-
 template<>
 struct LinearImpl<true> : public LinearImplBase<true> {
 	using Base = LinearImplBase<true>;
@@ -86,72 +85,25 @@ struct LinearImpl<true> : public LinearImplBase<true> {
 
 	template<class Pointer, class Expr>
 	void fill(Pointer pointer, Expr expr, size_t size) {
-		fillBasic(pointer, expr, size);
+		fillExpr(pointer, expr, size);
 	}
 
 	template<class Pointer, class Expr>
 	void fill(Pointer pointer, Expression<Expr> expr, size_t size) {
-		return self().fill(pointer, (Expr &)expr, size);
+		return fillExpr(pointer, (Expr &)expr, size);
 	};
 	template<class Pointer, class Expr>
 	void fill(Pointer pointer, WritableExpression<Expr> expr, size_t size) {
-		return self().fill(pointer, (Expression<Expr> &)expr, size);
+		return fillExpr(pointer, (Expr &)expr, size);
 	};
 
-	void fill(RealPointer<float> pointer, expression::ReadableReal<float> expr, size_t size) {
-		cblas_scopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
-	}
-	void fill(RealPointer<float> pointer, WritableReal<float> expr, size_t size) {
-		cblas_scopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
-	}
-	void fill(RealPointer<double> pointer, expression::ReadableReal<double> expr, size_t size) {
-		cblas_dcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
-	}
-	void fill(RealPointer<double> pointer, WritableReal<double> expr, size_t size) {
-		cblas_dcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+private:
+	// Most generic fill
+	template<class Pointer, class Expr>
+	void fillExpr(Pointer pointer, Expr expr, size_t size) {
+		fillBasic(pointer, expr, size);
 	}
 
-	template<class V>
-	void fill(RealPointer<float> pointer, expression::ConstantExpr<V> expr, size_t size) {
-		float v = expr.value;
-		vDSP_vfill(&v, pointer, 1, size);
-	}
-	template<class V>
-	void fill(RealPointer<double> pointer, expression::ConstantExpr<V> expr, size_t size) {
-		double v = expr.value;
-		vDSP_vfillD(&v, pointer, 1, size);
-	}
-	template<class V>
-	void fill(ComplexPointer<float> pointer, expression::ConstantExpr<V> expr, size_t size) {
-		std::complex<float> v = expr.value;
-		auto vSplit = dspSplit(&v);
-		auto pSplit = dspSplit(pointer);
-		vDSP_zvfill(&vSplit, &pSplit, 2, size);
-	}
-	template<class V>
-	void fill(ComplexPointer<double> pointer, expression::ConstantExpr<V> expr, size_t size) {
-		std::complex<double> v = expr.value;
-		auto vSplit = dspSplit(&v);
-		auto pSplit = dspSplit(pointer);
-		vDSP_zvfillD(&vSplit, &pSplit, 2, size);
-	}
-	template<class V>
-	void fill(SplitPointer<float> pointer, expression::ConstantExpr<V> expr, size_t size) {
-		std::complex<float> v = expr.value;
-		float vr = v.real(), vi = v.imag();
-		auto vSplit = dspSplit({&vr, &vi});
-		auto pSplit = dspSplit(pointer);
-		vDSP_zvfill(&vSplit, &pSplit, 1, size);
-	}
-	template<class V>
-	void fill(SplitPointer<double> pointer, expression::ConstantExpr<V> expr, size_t size) {
-		std::complex<double> v = expr.value;
-		double vr = v.real(), vi = v.imag();
-		auto vSplit = dspSplit({&vr, &vi});
-		auto pSplit = dspSplit(pointer);
-		vDSP_zvfillD(&vSplit, &pSplit, 1, size);
-	}
-private:
 	template<class Pointer, class Expr>
 	void fillBasic(Pointer pointer, Expr expr, size_t size) {
 		basicFillWarning<Expr>();
@@ -162,25 +114,155 @@ private:
 	template<class V, class Expr>
 	void fillBasic(SplitPointer<V> pointer, Expr expr, size_t size) {
 		basicFillWarning<Expr>();
+		using Complex = decltype(pointer[0]);
 		for (size_t i = 0; i < size; ++i) {
-			auto c = expr.get(i);
+			Complex c = expr.get(i);
 			pointer.real[i] = c.real();
 			pointer.imag[i] = c.imag();
 		}
 	}
+	
+	template<typename V>
+	void clear(V *v, size_t size) {
+		for (size_t i = 0; i < size; ++i) v[i] = 0;
+	}
+	void clear(float *v, size_t size) {
+		vDSP_vclr(v, 1, size);
+	}
+	void clear(double *v, size_t size) {
+		vDSP_vclrD(v, 1, size);
+	}
+	// Filling a split-complex vector with real values won't hit the specialisations below, so we handle it here
+	template<class Expr>
+	ItemType<Expr, float, void> fillBasic(SplitPointer<float> pointer, Expr expr, size_t size) {
+		fillExpr(pointer.real, expr, size);
+		clear(pointer.imag, size);
+	}
+	template<class Expr>
+	ItemType<Expr, double, void> fillBasic(SplitPointer<double> pointer, Expr expr, size_t size) {
+		fillExpr(pointer.real, expr, size);
+		clear(pointer.imag, size);
+	}
+	
+	// Copying from existing pointer
+	void fillExpr(RealPointer<float> pointer, expression::ReadableReal<float> expr, size_t size) {
+		cblas_scopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+	void fillExpr(RealPointer<float> pointer, WritableReal<float> expr, size_t size) {
+		cblas_scopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+	void fillExpr(RealPointer<double> pointer, expression::ReadableReal<double> expr, size_t size) {
+		cblas_dcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+	void fillExpr(RealPointer<double> pointer, WritableReal<double> expr, size_t size) {
+		cblas_dcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+	void fillExpr(ComplexPointer<float> pointer, expression::ReadableComplex<float> expr, size_t size) {
+		cblas_ccopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+	void fillExpr(ComplexPointer<float> pointer, WritableComplex<float> expr, size_t size) {
+		cblas_ccopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+	void fillExpr(ComplexPointer<double> pointer, expression::ReadableComplex<double> expr, size_t size) {
+		cblas_zcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
+	void fillExpr(ComplexPointer<double> pointer, WritableComplex<double> expr, size_t size) {
+		cblas_zcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+	}
 
-// Forwards .fill() to .fillName(), but doesn't define that
+	// Filling with a constant
+	template<class V>
+	void fillExpr(RealPointer<float> pointer, expression::ConstantExpr<V> expr, size_t size) {
+		float v = expr.value;
+		vDSP_vfill(&v, pointer, 1, size);
+	}
+	template<class V>
+	void fillExpr(RealPointer<double> pointer, expression::ConstantExpr<V> expr, size_t size) {
+		double v = expr.value;
+		vDSP_vfillD(&v, pointer, 1, size);
+	}
+	template<class V>
+	void fillExpr(ComplexPointer<float> pointer, expression::ConstantExpr<V> expr, size_t size) {
+		std::complex<float> v = expr.value;
+		auto vSplit = dspSplit(&v);
+		auto pSplit = dspSplit(pointer);
+		vDSP_zvfill(&vSplit, &pSplit, 2, size);
+	}
+	template<class V>
+	void fillExpr(ComplexPointer<double> pointer, expression::ConstantExpr<V> expr, size_t size) {
+		std::complex<double> v = expr.value;
+		auto vSplit = dspSplit(&v);
+		auto pSplit = dspSplit(pointer);
+		vDSP_zvfillD(&vSplit, &pSplit, 2, size);
+	}
+	template<class V>
+	void fillExpr(SplitPointer<float> pointer, expression::ConstantExpr<V> expr, size_t size) {
+		std::complex<float> v = expr.value;
+		float vr = v.real(), vi = v.imag();
+		auto vSplit = dspSplit({&vr, &vi});
+		auto pSplit = dspSplit(pointer);
+		vDSP_zvfill(&vSplit, &pSplit, 1, size);
+	}
+	template<class V>
+	void fillExpr(SplitPointer<double> pointer, expression::ConstantExpr<V> expr, size_t size) {
+		std::complex<double> v = expr.value;
+		double vr = v.real(), vi = v.imag();
+		auto vSplit = dspSplit({&vr, &vi});
+		auto pSplit = dspSplit(pointer);
+		vDSP_zvfillD(&vSplit, &pSplit, 1, size);
+	}
+
+// Forwards .fillExpr() to .fillName(), but doesn't define that
 #define SIGNALSMITH_AUDIO_LINEAR_OP1_R(Name) \
-public: \
 	template<class A> \
-	void fill(RealPointer<float> pointer, expression::Name<A> expr, size_t size) { \
+	void fillExpr(RealPointer<float> pointer, expression::Name<A> expr, size_t size) { \
 		fill##Name(pointer, expr, size); \
 	} \
 	template<class A> \
-	void fill(RealPointer<double> pointer, expression::Name<A> expr, size_t size) { \
+	void fillExpr(RealPointer<double> pointer, expression::Name<A> expr, size_t size) { \
 		fill##Name(pointer, expr, size); \
 	} \
-private:
+	template<class Expr> \
+	void fill##Name(RealPointer<float> pointer, Expr expr, size_t size) { \
+		fillBasic(pointer, expr, size); \
+	} \
+	template<class Expr> \
+	void fill##Name(RealPointer<double> pointer, Expr expr, size_t size) { \
+		fillBasic(pointer, expr, size); \
+	}
+#define SIGNALSMITH_AUDIO_LINEAR_OP1_C(Name) \
+	template<class A> \
+	void fillExpr(ComplexPointer<float> pointer, expression::Name<A> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+	template<class A> \
+	void fillExpr(ComplexPointer<double> pointer, expression::Name<A> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+	template<class Expr> \
+	void fill##Name(ComplexPointer<float> pointer, Expr expr, size_t size) { \
+		fillBasic(pointer, expr, size); \
+	} \
+	template<class Expr> \
+	void fill##Name(ComplexPointer<double> pointer, Expr expr, size_t size) { \
+		fillBasic(pointer, expr, size); \
+	} \
+	template<class A> \
+	void fillExpr(SplitPointer<float> pointer, expression::Name<A> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+	template<class A> \
+	void fillExpr(SplitPointer<double> pointer, expression::Name<A> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+	template<class Expr> \
+	void fill##Name(SplitPointer<float> pointer, Expr expr, size_t size) { \
+		fillBasic(pointer, expr, size); \
+	} \
+	template<class Expr> \
+	void fill##Name(SplitPointer<double> pointer, Expr expr, size_t size) { \
+		fillBasic(pointer, expr, size); \
+	}
 // R -> R operators
 #define SIGNALSMITH_AUDIO_LINEAR_TREE1_RR(Name, vDSP_func) \
 	template<class A> \
@@ -242,6 +324,7 @@ private:
 	SIGNALSMITH_AUDIO_LINEAR_OP1_R(Abs)
 	SIGNALSMITH_AUDIO_LINEAR_TREE1_RC(Abs, vDSP_zvabs);
 	SIGNALSMITH_AUDIO_LINEAR_OP1_R(Neg)
+	SIGNALSMITH_AUDIO_LINEAR_OP1_C(Neg)
 	SIGNALSMITH_AUDIO_LINEAR_TREE1_RR(Neg, vDSP_vneg);
 	SIGNALSMITH_AUDIO_LINEAR_TREE1_CC(Neg, vDSP_zvneg);
 #undef SIGNALSMITH_AUDIO_LINEAR_TREE1_RR
@@ -284,15 +367,15 @@ private:
 	SIGNALSMITH_AUDIO_LINEAR_TREE1_RR(Floor, vvfloorf, vvfloor);
 #undef SIGNALSMITH_AUDIO_LINEAR_OP1_R
 
-// Forwards .fill() to .fillName(), but doesn't define that
+// Forwards .fillExpr() to .fillName(), but doesn't define that
 #define SIGNALSMITH_AUDIO_LINEAR_OP2_R(Name) \
 public: \
 	template<class A, class B> \
-	void fill(RealPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
+	void fillExpr(RealPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
 		fill##Name(pointer, expr, size); \
 	} \
 	template<class A, class B> \
-	void fill(RealPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
+	void fillExpr(RealPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
 		fill##Name(pointer, expr, size); \
 	} \
 private:
