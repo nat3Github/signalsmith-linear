@@ -24,6 +24,24 @@ namespace _impl {
 			a[i] = b[i]*std::conj(c[i]);
 		}
 	}
+	template<class V>
+	void complexMul(V *ar, V *ai, const V *br, const V *bi, const V *cr, const V *ci, size_t size) {
+		for (size_t i = 0; i < size; ++i) {
+			V rr = br[i]*cr[i] - bi[i]*ci[i];
+			V ri = br[i]*ci[i] + bi[i]*cr[i];
+			ar[i] = rr;
+			ai[i] = ri;
+		}
+	}
+	template<class V>
+	void complexMulConj(V *ar, V *ai, const V *br, const V *bi, const V *cr, const V *ci, size_t size) {
+		for (size_t i = 0; i < size; ++i) {
+			V rr = cr[i]*br[i] + ci[i]*bi[i];
+			V ri = cr[i]*bi[i] - ci[i]*br[i];
+			ar[i] = rr;
+			ai[i] = ri;
+		}
+	}
 }
 
 /// Extremely simple and portable power-of-2 FFT
@@ -227,11 +245,17 @@ struct SplitFFT {
 		innerFFT.resize(innerSize);
 		
 		outerTwiddles.resize(innerSize*outerSize);
+		outerTwiddlesR.resize(innerSize*outerSize);
+		outerTwiddlesI.resize(innerSize*outerSize);
 		for (size_t i = 0; i < innerSize; ++i) {
 			for (size_t s = 0; s < outerSize; ++s) {
 				Sample twiddlePhase = Sample(-2*M_PI*i/innerSize*s/outerSize);
 				outerTwiddles[i + s*innerSize] = std::polar(Sample(1), twiddlePhase);
 			}
+		}
+		for (size_t i = 0; i < size; ++i) {
+			outerTwiddlesR[i] = outerTwiddles[i].real();
+			outerTwiddlesI[i] = outerTwiddles[i].imag();
 		}
 
 		dftTwists.resize(outerSize);
@@ -293,6 +317,7 @@ private:
 	size_t innerSize, outerSize;
 	std::vector<Complex> tmpFreq;
 	std::vector<Complex> outerTwiddles;
+	std::vector<Sample> outerTwiddlesR, outerTwiddlesI;
 	std::vector<Complex> dftTwists;
 
 	enum class StepType{firstWithFinal, firstWithoutFinal, middleWithFinal, middleWithoutFinal, finalOrder2, finalOrder3, finalOrder4, finalOrder5};
@@ -391,6 +416,114 @@ private:
 				break;
 		}
 	}
+	template<bool inverse>
+	void fftStep(StepType stepType, size_t s, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		Sample *tmpR = (Sample *)tmpFreq.data(), *tmpI = tmpR + tmpFreq.size();
+		switch (stepType) {
+			case (StepType::firstWithFinal): {
+				for (size_t i = 0; i < innerSize; ++i) {
+					tmpR[i] = inR[i*outerSize];
+					tmpI[i] = inI[i*outerSize];
+				}
+				if (inverse) {
+					innerFFT.ifft(tmpR, tmpI, outR, outI);
+				} else {
+					innerFFT.fft(tmpR, tmpI, outR, outI);
+				}
+				break;
+			}
+			case (StepType::firstWithoutFinal): {
+				for (size_t i = 0; i < innerSize; ++i) {
+					tmpR[i] = inR[i*outerSize];
+					tmpI[i] = inI[i*outerSize];
+				}
+				if (inverse) {
+					innerFFT.ifft(tmpR, tmpI, outR, outI);
+				} else {
+					innerFFT.fft(tmpR, tmpI, outR, outI);
+				}
+				// We're doing the DFT as part of these passes, so duplicate this one
+				for (size_t s = 1; s < outerSize; ++s) {
+					auto *offsetR = outR + s*innerSize;
+					auto *offsetI = outI + s*innerSize;
+					for (size_t i = 0; i < innerSize; ++i) {
+						offsetR[i] = outR[i];
+						offsetI[i] = outI[i];
+					}
+				}
+				break;
+			}
+			case (StepType::middleWithFinal): {
+				const Sample *offsetR = inR + s;
+				const Sample *offsetI = inI + s;
+				for (size_t i = 0; i < innerSize; ++i) {
+					outR[i] = offsetR[i*outerSize];
+					outI[i] = offsetI[i*outerSize];
+				}
+				if (inverse) {
+					innerFFT.ifft(outR, outI, tmpR, tmpI);
+				} else {
+					innerFFT.fft(outR, outI, tmpR, tmpI);
+				}
+				
+				auto *twiddlesR = outerTwiddlesR.data() + s*innerSize;
+				auto *twiddlesI = outerTwiddlesI.data() + s*innerSize;
+				// We'll do the final DFT in-place, as extra passes
+				if (inverse) {
+					_impl::complexMulConj(outR + s*innerSize, outI + s*innerSize, tmpR, tmpI, twiddlesR, twiddlesI, innerSize);
+				} else {
+					_impl::complexMul(outR + s*innerSize, outI + s*innerSize, tmpR, tmpI, twiddlesR, twiddlesI, innerSize);
+				}
+				break;
+			}
+			case (StepType::middleWithoutFinal): {
+				const Sample *offsetR = inR + s;
+				const Sample *offsetI = inI + s;
+				for (size_t i = 0; i < innerSize; ++i) {
+					outR[i] = offsetR[i*outerSize];
+					outI[i] = offsetI[i*outerSize];
+				}
+				if (inverse) {
+					innerFFT.ifft(outR, outI, tmpR, tmpI);
+				} else {
+					innerFFT.fft(outR, outI, tmpR, tmpI);
+				}
+				
+				auto *twiddlesR = outerTwiddlesR.data() + s*innerSize;
+				auto *twiddlesI = outerTwiddlesI.data() + s*innerSize;
+				// We have to do the final DFT right here
+				for (size_t i = 0; i < innerSize; ++i) {
+					Complex v = Complex{tmpR[i], tmpI[i]}*Complex{twiddlesR[i], inverse ? twiddlesI[i] : -twiddlesI[i]};
+					tmpR[i] = v.real();
+					tmpI[i] = v.imag();
+					outR[i] += v.real();
+					outI[i] += v.imag();
+				}
+
+				for (size_t f = 1; f < outerSize; ++f) {
+					Complex dftTwist = dftTwists[(f*s)%outerSize];
+					for (size_t i = 0; i < innerSize; ++i) {
+						Complex v = Complex{tmpR[i], tmpI[i]}*(inverse ? std::conj(dftTwist) : dftTwist);
+						outR[i + f*innerSize] += v.real();
+						outI[i + f*innerSize] += v.imag();
+					}
+				}
+				break;
+			}
+			case StepType::finalOrder2:
+				finalPass2(outR, outI);
+				break;
+			case StepType::finalOrder3:
+				finalPass3<inverse>(outR, outI);
+				break;
+			case StepType::finalOrder4:
+				finalPass4<inverse>(outR, outI);
+				break;
+			case StepType::finalOrder5:
+				finalPass5<inverse>(outR, outI);
+				break;
+		}
+	}
 	
 	void finalPass2(Complex *f0) {
 		auto *f1 = f0 + innerSize;
@@ -398,6 +531,18 @@ private:
 			Complex a = f0[i], b = f1[i];
 			f0[i] = a + b;
 			f1[i] = a - b;
+		}
+	}
+	void finalPass2(Sample *f0r, Sample *f0i) {
+		auto *f1r = f0r + innerSize;
+		auto *f1i = f0i + innerSize;
+		for (size_t i = 0; i < innerSize; ++i) {
+			Sample ar = f0r[i], ai = f0i[i];
+			Sample br = f1r[i], bi = f1i[i];
+			f0r[i] = ar + br;
+			f0i[i] = ai + bi;
+			f1r[i] = ar - br;
+			f1i[i] = ai - bi;
 		}
 	}
 	template<bool inverse>
@@ -410,6 +555,26 @@ private:
 			f0[i] = a + b + c;
 			f1[i] = a + b*tw1 + c*std::conj(tw1);
 			f2[i] = a + b*std::conj(tw1) + c*tw1;
+		}
+	}
+	template<bool inverse>
+	void finalPass3(Sample *f0r, Sample *f0i) {
+		auto *f1r = f0r + innerSize;
+		auto *f1i = f0i + innerSize;
+		auto *f2r = f0r + innerSize*2;
+		auto *f2i = f0i + innerSize*2;
+		const Complex tw1{Sample(-0.5), Sample(-std::sqrt(0.75)*(inverse ? -1 : 1))};
+		for (size_t i = 0; i < innerSize; ++i) {
+			Complex a = {f0r[i], f0i[i]}, b = {f1r[i], f1i[i]}, c = {f2r[i], f2i[i]};
+			Complex f0 = a + b + c;
+			f0r[i] = f0.real();
+			f0i[i] = f0.imag();
+			Complex f1 = a + b*tw1 + c*std::conj(tw1);
+			f1r[i] = f1.real();
+			f1i[i] = f1.imag();
+			Complex f2 = a + b*std::conj(tw1) + c*tw1;
+			f2r[i] = f2.real();
+			f2i[i] = f2.imag();
 		}
 	}
 	template<bool inverse>
@@ -429,6 +594,33 @@ private:
 		}
 	}
 	template<bool inverse>
+	void finalPass4(Sample *f0r, Sample *f0i) {
+		auto *f1r = f0r + innerSize;
+		auto *f1i = f0i + innerSize;
+		auto *f2r = f0r + innerSize*2;
+		auto *f2i = f0i + innerSize*2;
+		auto *f3r = f0r + innerSize*3;
+		auto *f3i = f0i + innerSize*3;
+		for (size_t i = 0; i < innerSize; ++i) {
+			Complex a = {f0r[i], f0i[i]}, b = {f1r[i], f1i[i]}, c = {f2r[i], f2i[i]}, d = {f3r[i], f3i[i]};
+			
+			Complex ac0 = a + c, ac1 = a - c;
+			Complex bd0 = b + d, bd1 = b - d;
+			Complex f0 = ac0 + bd0;
+			f0r[i] = f0.real();
+			f0i[i] = f0.imag();
+			Complex f1 = ac1 + bd1*Complex{0, inverse ? 1 : -1};
+			f1r[i] = f1.real();
+			f1i[i] = f1.imag();
+			Complex f2 = ac0 - bd0;
+			f2r[i] = f2.real();
+			f2i[i] = f2.imag();
+			Complex f3 = ac1 - bd1*Complex{0, inverse ? 1 : -1};
+			f3r[i] = f3.real();
+			f3i[i] = f3.imag();
+		}
+	}
+	template<bool inverse>
 	void finalPass5(Complex *f0) {
 		auto *f1 = f0 + innerSize;
 		auto *f2 = f0 + innerSize*2;
@@ -442,6 +634,36 @@ private:
 			f2[i] = a + b*tw2 + c*std::conj(tw1) + d*tw1 + e*std::conj(tw2);
 			f3[i] = a + b*std::conj(tw2) + c*tw1 + d*std::conj(tw1) + e*tw2;
 			f4[i] = a + b*std::conj(tw1) + c*std::conj(tw2) + d*tw2 + e*tw1;
+		}
+	}
+	template<bool inverse>
+	void finalPass5(Sample *f0r, Sample *f0i) {
+		auto *f1r = f0r + innerSize;
+		auto *f1i = f0i + innerSize;
+		auto *f2r = f0r + innerSize*2;
+		auto *f2i = f0i + innerSize*2;
+		auto *f3r = f0r + innerSize*3;
+		auto *f3i = f0i + innerSize*3;
+		auto *f4r = f0r + innerSize*4;
+		auto *f4i = f0i + innerSize*4;
+		const Complex tw1{0.30901699437494745, -0.9510565162951535*(inverse ? -1 : 1)}, tw2{-0.8090169943749473, -0.5877852522924732*(inverse ? -1 : 1)};
+		for (size_t i = 0; i < innerSize; ++i) {
+			Complex a = {f0r[i], f0i[i]}, b = {f1r[i], f1i[i]}, c = {f2r[i], f2i[i]}, d = {f3r[i], f3i[i]}, e = {f4r[i], f4i[i]};
+			Complex f0 = a + b + c + d + e;
+			f0r[i] = f0.real();
+			f0i[i] = f0.imag();
+			Complex f1 = a + b*tw1 + c*tw2 + d*std::conj(tw2) + e*std::conj(tw1);
+			f1r[i] = f1.real();
+			f1i[i] = f1.imag();
+			Complex f2 = a + b*tw2 + c*std::conj(tw1) + d*tw1 + e*std::conj(tw2);
+			f2r[i] = f2.real();
+			f2i[i] = f2.imag();
+			Complex f3 = a + b*std::conj(tw2) + c*tw1 + d*std::conj(tw1) + e*tw2;
+			f3r[i] = f3.real();
+			f3i[i] = f3.imag();
+			Complex f4 = a + b*std::conj(tw1) + c*std::conj(tw2) + d*tw2 + e*tw1;
+			f4r[i] = f4.real();
+			f4i[i] = f4.imag();
 		}
 	}
 };

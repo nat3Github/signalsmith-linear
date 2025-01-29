@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../linear.h"
+
 #include "./stopwatch.h"
 #include "plot/plot.h"
 

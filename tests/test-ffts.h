@@ -18,6 +18,31 @@ struct SimpleWrapper {
 		fft.fft(data.size, time, freq);
 		fft.ifft(data.size, freq, time2);
 	}
+	
+	template<class Data>
+	void normalise(Data &) {}
+};
+
+template<class Sample>
+struct SimpleWrapperSplit {
+	signalsmith::linear::SimpleFFT<Sample> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+	
+	template<class Data>
+	void run(Data &data) {
+		auto time = data.split(0), freq = data.split(1), time2 = data.split(2);
+		fft.fft(data.size, time.real, time.imag, freq.real, freq.imag);
+		fft.ifft(data.size, freq.real, freq.imag, time2.real, time2.imag);
+	}
+	
+	template<class Data>
+	void normalise(Data &data) {
+		data.splitToComplex(1);
+		data.splitToComplex(2);
+	}
 };
 
 template<class Sample>
@@ -34,6 +59,30 @@ struct Pow2Wrapper {
 		fft.fft(time, freq);
 		fft.ifft(freq, time2);
 	}
+
+	template<class Data>
+	void normalise(Data &) {}
+};
+template<class Sample>
+struct Pow2WrapperSplit {
+	signalsmith::linear::Pow2FFT<Sample> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	void run(Data &data) {
+		auto time = data.split(0), freq = data.split(1), time2 = data.split(2);
+		fft.fft(time.real, time.imag, freq.real, freq.imag);
+		fft.ifft(freq.real, freq.imag, time2.real, time2.imag);
+	}
+	
+	template<class Data>
+	void normalise(Data &data) {
+		data.splitToComplex(1);
+		data.splitToComplex(2);
+	}
 };
 
 template<class Sample>
@@ -49,6 +98,30 @@ struct SplitWrapper {
 		auto *time = data.complex(0), *freq = data.complex(1), *time2 = data.complex(2);
 		fft.fft(time, freq);
 		fft.ifft(freq, time2);
+	}
+
+	template<class Data>
+	void normalise(Data &) {}
+};
+template<class Sample>
+struct SplitWrapperSplit {
+	signalsmith::linear::SplitFFT<Sample> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	void run(Data &data) {
+		auto time = data.split(0), freq = data.split(1), time2 = data.split(2);
+		fft.fft(time.real, time.imag, freq.real, freq.imag);
+		fft.ifft(freq.real, freq.imag, time2.real, time2.imag);
+	}
+	
+	template<class Data>
+	void normalise(Data &data) {
+		data.splitToComplex(1);
+		data.splitToComplex(2);
 	}
 };
 
@@ -67,6 +140,9 @@ struct SignalsmithFFTWrapper {
 		fft.fft(time, freq);
 		fft.ifft(freq, time2);
 	}
+
+	template<class Data>
+	void normalise(Data &) {}
 };
 
 #include "./others/dsp/fft.h"
@@ -84,6 +160,9 @@ struct SignalsmithDSPWrapper {
 		fft.fft(time, freq);
 		fft.ifft(freq, time2);
 	}
+
+	template<class Data>
+	void normalise(Data &) {}
 };
 
 // ---------- main code
@@ -105,10 +184,16 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 
 	auto simpleDouble = plot.runner<SimpleWrapper<double>>("Simple (double)");
 	auto simpleFloat = plot.runner<SimpleWrapper<float>>("Simple (float)");
+	auto simpleDoubleSplit = plot.runner<SimpleWrapperSplit<double>>("Simple (split double)");
+	auto simpleFloatSplit = plot.runner<SimpleWrapperSplit<float>>("Simple (split float)");
 	auto pow2Double = plot.runner<Pow2Wrapper<double>>("Pow2 (double)");
 	auto pow2Float = plot.runner<Pow2Wrapper<float>>("Pow2 (float)");
+	auto pow2DoubleSplit = plot.runner<Pow2WrapperSplit<double>>("Pow2 (split double)");
+	auto pow2FloatSplit = plot.runner<Pow2WrapperSplit<float>>("Pow2 (split float)");
 	auto splitDouble = plot.runner<SplitWrapper<double>>("Split (double)");
 	auto splitFloat = plot.runner<SplitWrapper<float>>("Split (float)");
+	auto splitDoubleSplit = plot.runner<SplitWrapperSplit<double>>("Split (split double)");
+	auto splitFloatSplit = plot.runner<SplitWrapperSplit<float>>("Split (split float)");
 	auto dspDouble = plot.runner<SignalsmithDSPWrapper<double>>("DSP library (double)");
 	auto dspFloat = plot.runner<SignalsmithDSPWrapper<float>>("DSP library (float)");
 
@@ -118,6 +203,10 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 
 		RunData<double> dataDouble(n);
 		RunData<float> dataFloat(n);
+		for (size_t i = 0; i < 3; ++i) {
+			dataDouble.complexToSplit(i);
+			dataFloat.complexToSplit(i);
+		}
 
 		RunData<double> *refPtrDouble = nullptr;
 		RunData<float> *refPtrFloat = nullptr;
@@ -154,17 +243,29 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 				time2Double[f] = timeDouble[f]*double(n);
 				time2Float[f] = timeFloat[f]*float(n);
 			}
+			for (size_t i = 0; i < 3; ++i) {
+				refDataDouble.complexToSplit(i);
+				refDataFloat.complexToSplit(i);
+			}
 		}
 
 		if (pow3 + pow5 + pow7 == 0) {
 			std::cout << "simple double           \r";
 			simpleDouble.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "simple double (split)           \r";
+			simpleDoubleSplit.run(dataDouble, refTime, refPtrDouble);
 			std::cout << "simple float           \r";
 			simpleFloat.run(dataFloat, refTime, refPtrFloat);
+			std::cout << "simple float (split)           \r";
+			simpleFloatSplit.run(dataFloat, refTime, refPtrFloat);
 			std::cout << "Pow2 double           \r";
 			pow2Double.run(dataDouble, refTime, refPtrDouble);
 			std::cout << "Pow2 float           \r";
 			pow2Float.run(dataFloat, refTime, refPtrFloat);
+			std::cout << "Pow2 double (split)           \r";
+			pow2DoubleSplit.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "Pow2 float (split)           \r";
+			pow2FloatSplit.run(dataFloat, refTime, refPtrFloat);
 		}
 		if (pow5 + pow7 == 0) {
 			std::cout << "DSP double           \r";
@@ -177,6 +278,10 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 			splitDouble.run(dataDouble, refTime, refPtrDouble);
 			std::cout << "split float           \r";
 			splitFloat.run(dataFloat, refTime, refPtrFloat);
+			std::cout << "split double (split)           \r";
+			splitDoubleSplit.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "split float (split)           \r";
+			splitFloatSplit.run(dataFloat, refTime, refPtrFloat);
 		}
 	};
 	for (int n = 1; n <= maxSize; n *= 2) {
