@@ -4,6 +4,8 @@ namespace signalsmith { namespace linear {
 
 template<>
 struct Pow2FFT<float> {
+	static constexpr bool prefersSplit = true;
+
 	using Complex = std::complex<float>;
 
 	Pow2FFT(size_t size = 0) {
@@ -30,12 +32,10 @@ struct Pow2FFT<float> {
 		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
 		vDSP_ztoc(&splitComplex, 1, (DSPComplex*)output, 2, _size);
 	}
-
-	void fftStrideTime(size_t stride, const Complex* input, Complex* output) {
-		DSPSplitComplex splitComplex{ splitReal.data(), splitImag.data() };
-		vDSP_ctoz((DSPComplex*)input, 2*stride, &splitComplex, 1, _size);
-		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
-		vDSP_ztoc(&splitComplex, 1, (DSPComplex*)output, 2, _size);
+	void fft(const float *inR, const float *inI, float *outR, float *outI) {
+		DSPSplitComplex inSplit{(float *)inR, (float *)inI};
+		DSPSplitComplex outSplit{outR, outI};
+		vDSP_fft_zop(fftSetup, &inSplit, 1, &outSplit, 1, log2, kFFTDirection_Forward);
 	}
 
 	void ifft(const Complex* input, Complex* output) {
@@ -44,13 +44,12 @@ struct Pow2FFT<float> {
 		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Inverse);
 		vDSP_ztoc(&splitComplex, 1, (DSPComplex*)output, 2, _size);
 	}
-
-	void ifftStrideFreq(size_t stride, const Complex* input, Complex* output) {
-		DSPSplitComplex splitComplex{ splitReal.data(), splitImag.data() };
-		vDSP_ctoz((DSPComplex*)input, 2*stride, &splitComplex, 1, _size);
-		vDSP_fft_zip(fftSetup, &splitComplex, 1, log2, kFFTDirection_Inverse);
-		vDSP_ztoc(&splitComplex, 1, (DSPComplex*)output, 2, _size);
+	void ifft(const float *inR, const float *inI, float *outR, float *outI) {
+		DSPSplitComplex inSplit{(float *)inR, (float *)inI};
+		DSPSplitComplex outSplit{outR, outI};
+		vDSP_fft_zop(fftSetup, &inSplit, 1, &outSplit, 1, log2, kFFTDirection_Inverse);
 	}
+
 private:
 	size_t _size = 0;
 	bool hasSetup = false;
@@ -86,12 +85,10 @@ struct Pow2FFT<double> {
 		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
 		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex*)output, 2, _size);
 	}
-
-	void fftStrideTime(size_t stride, const Complex* input, Complex* output) {
-		DSPDoubleSplitComplex splitComplex{ splitReal.data(), splitImag.data() };
-		vDSP_ctozD((DSPDoubleComplex*)input, 2 * stride, &splitComplex, 1, _size);
-		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Forward);
-		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex*)output, 2, _size);
+	void fft(const double *inR, const double *inI, double *outR, double *outI) {
+		DSPDoubleSplitComplex inSplit{(double *)inR, (double *)inI};
+		DSPDoubleSplitComplex outSplit{outR, outI};
+		vDSP_fft_zopD(fftSetup, &inSplit, 1, &outSplit, 1, log2, kFFTDirection_Forward);
 	}
 
 	void ifft(const Complex* input, Complex* output) {
@@ -100,13 +97,12 @@ struct Pow2FFT<double> {
 		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Inverse);
 		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex*)output, 2, _size);
 	}
-
-	void ifftStrideFreq(size_t stride, const Complex* input, Complex* output) {
-		DSPDoubleSplitComplex splitComplex{ splitReal.data(), splitImag.data() };
-		vDSP_ctozD((DSPDoubleComplex*)input, 2 * stride, &splitComplex, 1, _size);
-		vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2, kFFTDirection_Inverse);
-		vDSP_ztocD(&splitComplex, 1, (DSPDoubleComplex*)output, 2, _size);
+	void ifft(const double *inR, const double *inI, double *outR, double *outI) {
+		DSPDoubleSplitComplex inSplit{(double *)inR, (double *)inI};
+		DSPDoubleSplitComplex outSplit{outR, outI};
+		vDSP_fft_zopD(fftSetup, &inSplit, 1, &outSplit, 1, log2, kFFTDirection_Inverse);
 	}
+
 private:
 	size_t _size = 0;
 	bool hasSetup = false;

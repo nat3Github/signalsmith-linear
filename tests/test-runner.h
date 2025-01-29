@@ -133,6 +133,22 @@ struct RunData {
 		return splits[index];
 	}
 	
+	void complexToSplit(size_t index) {
+		auto *c = complex(index);
+		auto s = split(index);
+		for (size_t i = 0; i < size; ++i) {
+			s.real[i] = c[i].real();
+			s.imag[i] = c[i].imag();
+		}
+	}
+	void splitToComplex(size_t index) {
+		auto *c = complex(index);
+		auto s = split(index);
+		for (size_t i = 0; i < size; ++i) {
+			c[i] = {s.real[i], s.imag[i]};
+		}
+	}
+	
 	template<int dataType>
 	auto get(size_t index) -> decltype(RunDataGetter<RunData, Sample, dataType>::get(*this, index)) {
 		return RunDataGetter<RunData, Sample, dataType>::get(*this, index);
@@ -279,6 +295,7 @@ struct RunPlot {
 			obj.run(data);
 			
 			if (maybeRefData) {
+				obj.normalise(data);
 				double error = data.distance(*maybeRefData);
 				if (error > errorLimit) {
 					std::cout << "\nsize = " << data.size << ", error = " << error << "\n";

@@ -62,6 +62,25 @@ struct SimpleFFT {
 		}
 		fftPass<true>(size, 1, freq, time, working.data());
 	}
+
+	void fft(size_t size, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		if (size <= 1) {
+			*outR = *inR;
+			*outI = *inI;
+			return;
+		}
+		Sample *workingR = (Sample *)working.data(), *workingI = workingR + size;
+		fftPass<false>(size, 1, inR, inI, outR, outI, workingR, workingI);
+	}
+	void ifft(size_t size, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		if (size <= 1) {
+			*outR = *inR;
+			*outI = *inI;
+			return;
+		}
+		Sample *workingR = (Sample *)working.data(), *workingI = workingR + size;
+		fftPass<true>(size, 1, inR, inI, outR, outI, workingR, workingI);
+	}
 private:
 	std::vector<Complex> twiddles;
 	std::vector<Complex> working;
@@ -78,7 +97,7 @@ private:
 			combine2<inverse>(size, stride, input, output);
 		}
 	}
-	
+
 	// Combine interleaved even/odd results into a single spectrum
 	template<bool inverse>
 	void combine2(size_t size, size_t stride, const Complex *input, Complex *output) const {
@@ -98,11 +117,52 @@ private:
 			}
 		}
 	}
+
+	// Calculate a [size]-point FFT, where each element is a block of [stride] values
+	template<bool inverse>
+	void fftPass(size_t size, size_t stride, const Sample *inputR, const Sample *inputI, Sample *outputR, Sample *outputI, Sample *workingR, Sample *workingI) const {
+		if (size > 2) {
+			// Calculate the two half-size FFTs (odd and even) by doubling the stride
+			fftPass<inverse>(size/2, stride*2, inputR, inputI, workingR, workingI, outputR, outputI);
+			combine2<inverse>(size, stride, workingR, workingI, outputR, outputI);
+		} else {
+			// The input can already be considered a 1-point FFT
+			combine2<inverse>(size, stride, inputR, inputI, outputR, outputI);
+		}
+	}
+
+	// Combine interleaved even/odd results into a single spectrum
+	template<bool inverse>
+	void combine2(size_t size, size_t stride, const Sample *inputR, const Sample *inputI, Sample *outputR, Sample *outputI) const {
+		auto twiddleStep = twiddles.size()*2/size;
+		for (size_t i = 0; i < size/2; ++i) {
+			Complex twiddle = twiddles[i*twiddleStep];
+			
+			const Sample *inputAR = inputR + 2*i*stride;
+			const Sample *inputAI = inputI + 2*i*stride;
+			const Sample *inputBR = inputR + (2*i + 1)*stride;
+			const Sample *inputBI = inputI + (2*i + 1)*stride;
+			Sample *outputAR = outputR + i*stride;
+			Sample *outputAI = outputI + i*stride;
+			Sample *outputBR = outputR + (i + size/2)*stride;
+			Sample *outputBI = outputI + (i + size/2)*stride;
+			for (size_t s = 0; s < stride; ++s) {
+				Complex a = {inputAR[s], inputAI[s]};
+				Complex b = Complex{inputBR[s], inputBI[s]}*(inverse ? std::conj(twiddle) : twiddle);
+				Complex sum = a + b, diff = a - b;
+				outputAR[s] = sum.real();
+				outputAI[s] = sum.imag();
+				outputBR[s] = diff.real();
+				outputBI[s] = diff.imag();
+			}
+		}
+	}
 };
 
 /// A power-of-2 only FFT, specialised with platform-specific fast implementations where available
 template<typename Sample>
 struct Pow2FFT {
+	static constexpr bool prefersSplit = true; // whether this FFT implementation is faster when given split-complex inputs
 	using Complex = std::complex<Sample>;
 	
 	Pow2FFT(size_t size=0) {
@@ -118,31 +178,15 @@ struct Pow2FFT {
 	void fft(const Complex *time, Complex *freq) {
 		simpleFFT.fft(_size, time, freq);
 	}
-
-	void fftStrideTime(size_t stride, const Complex *time, Complex *freq) {
-		const Complex *input = time;
-		if (stride != 1) {
-			input = tmp.data();
-			for (size_t i = 0; i < _size; ++i) {
-				tmp[i] = time[i*stride];
-			}
-		}
-		simpleFFT.fft(_size, input, freq);
+	void fft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		simpleFFT.fft(_size, inR, inI, outR, outI);
 	}
 
 	void ifft(const Complex *freq, Complex *time) {
 		simpleFFT.ifft(_size, freq, time);
 	}
-
-	void ifftStrideFreq(size_t stride, const Complex *freq, Complex *time) {
-		const Complex *input = freq;
-		if (stride != 1) {
-			input = tmp.data();
-			for (size_t i = 0; i < _size; ++i) {
-				tmp[i] = freq[i*stride];
-			}
-		}
-		simpleFFT.ifft(_size, input, time);
+	void ifft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		simpleFFT.ifft(_size, inR, inI, outR, outI);
 	}
 
 private:
@@ -227,10 +271,19 @@ struct SplitFFT {
 			fftStep<false>(stepTypes[s], s, time, freq);
 		}
 	}
-
+	void fft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		for (size_t s = 0; s < stepTypes.size(); ++s) {
+			fftStep<false>(stepTypes[s], s, inR, inI, outR, outI);
+		}
+	}
 	void ifft(const Complex *freq, Complex *time) {
 		for (size_t s = 0; s < stepTypes.size(); ++s) {
 			fftStep<true>(stepTypes[s], s, freq, time);
+		}
+	}
+	void ifft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		for (size_t s = 0; s < stepTypes.size(); ++s) {
+			fftStep<true>(stepTypes[s], s, inR, inI, outR, outI);
 		}
 	}
 private:
@@ -249,18 +302,24 @@ private:
 	void fftStep(StepType stepType, size_t s, const Complex *time, Complex *freq) {
 		switch (stepType) {
 			case (StepType::firstWithFinal): {
+				for (size_t i = 0; i < innerSize; ++i) {
+					tmpFreq[i] = time[i*outerSize];
+				}
 				if (inverse) {
-					innerFFT.ifftStrideFreq(outerSize, time, freq);
+					innerFFT.ifft(tmpFreq.data(), freq);
 				} else {
-					innerFFT.fftStrideTime(outerSize, time, freq);
+					innerFFT.fft(tmpFreq.data(), freq);
 				}
 				break;
 			}
 			case (StepType::firstWithoutFinal): {
+				for (size_t i = 0; i < innerSize; ++i) {
+					tmpFreq[i] = time[i*outerSize];
+				}
 				if (inverse) {
-					innerFFT.ifftStrideFreq(outerSize, time, freq);
+					innerFFT.ifft(tmpFreq.data(), freq);
 				} else {
-					innerFFT.fftStrideTime(outerSize, time, freq);
+					innerFFT.fft(tmpFreq.data(), freq);
 				}
 				// We're doing the DFT as part of these passes, so duplicate this one
 				for (size_t s = 1; s < outerSize; ++s) {
@@ -272,10 +331,14 @@ private:
 				break;
 			}
 			case (StepType::middleWithFinal): {
+				const Complex *offsetTime = time + s;
+				for (size_t i = 0; i < innerSize; ++i) {
+					freq[i] = offsetTime[i*outerSize];
+				}
 				if (inverse) {
-					innerFFT.ifftStrideFreq(outerSize, time + s, tmpFreq.data());
+					innerFFT.ifft(freq, tmpFreq.data());
 				} else {
-					innerFFT.fftStrideTime(outerSize, time + s, tmpFreq.data());
+					innerFFT.fft(freq, tmpFreq.data());
 				}
 				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
@@ -288,10 +351,14 @@ private:
 				break;
 			}
 			case (StepType::middleWithoutFinal): {
+				const Complex *offsetTime = time + s;
+				for (size_t i = 0; i < innerSize; ++i) {
+					freq[i] = offsetTime[i*outerSize];
+				}
 				if (inverse) {
-					innerFFT.ifftStrideFreq(outerSize, time + s, tmpFreq.data());
+					innerFFT.ifft(freq, tmpFreq.data());
 				} else {
-					innerFFT.fftStrideTime(outerSize, time + s, tmpFreq.data());
+					innerFFT.fft(freq, tmpFreq.data());
 				}
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 
