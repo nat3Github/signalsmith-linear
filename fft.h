@@ -296,23 +296,35 @@ struct SplitFFT {
 	
 	void fft(const Complex *time, Complex *freq) {
 		for (size_t s = 0; s < stepTypes.size(); ++s) {
-			fftStep<false>(stepTypes[s], s, time, freq);
+			fftStep<false>(s, time, freq);
 		}
+	}
+	void fft(size_t step, const Complex *time, Complex *freq) {
+		fftStep<false>(step, time, freq);
 	}
 	void fft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
 		for (size_t s = 0; s < stepTypes.size(); ++s) {
-			fftStep<false>(stepTypes[s], s, inR, inI, outR, outI);
+			fftStep<false>(s, inR, inI, outR, outI);
 		}
+	}
+	void fft(size_t step, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		fftStep<false>(step, inR, inI, outR, outI);
 	}
 	void ifft(const Complex *freq, Complex *time) {
 		for (size_t s = 0; s < stepTypes.size(); ++s) {
-			fftStep<true>(stepTypes[s], s, freq, time);
+			fftStep<true>(s, freq, time);
 		}
+	}
+	void ifft(size_t step, const Complex *freq, Complex *time) {
+		fftStep<true>(step, freq, time);
 	}
 	void ifft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
 		for (size_t s = 0; s < stepTypes.size(); ++s) {
-			fftStep<true>(stepTypes[s], s, inR, inI, outR, outI);
+			fftStep<true>(s, inR, inI, outR, outI);
 		}
+	}
+	void ifft(size_t step, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		fftStep<true>(step, inR, inI, outR, outI);
 	}
 private:
 	using InnerFFT = Pow2FFT<Sample>;
@@ -328,8 +340,8 @@ private:
 	std::vector<StepType> stepTypes;
 	
 	template<bool inverse>
-	void fftStep(StepType stepType, size_t s, const Complex *time, Complex *freq) {
-		switch (stepType) {
+	void fftStep(size_t s, const Complex *time, Complex *freq) {
+		switch (stepTypes[s]) {
 			case (StepType::firstWithFinal): {
 				for (size_t i = 0; i < innerSize; ++i) {
 					tmpFreq[i] = time[i*outerSize];
@@ -422,9 +434,9 @@ private:
 		}
 	}
 	template<bool inverse>
-	void fftStep(StepType stepType, size_t s, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+	void fftStep(size_t s, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
 		Sample *tmpR = (Sample *)tmpFreq.data(), *tmpI = tmpR + tmpFreq.size();
-		switch (stepType) {
+		switch (stepTypes[s]) {
 			case (StepType::firstWithFinal): {
 				for (size_t i = 0; i < innerSize; ++i) {
 					tmpR[i] = inR[i*outerSize];

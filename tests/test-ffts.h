@@ -326,6 +326,146 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 	plot.plot.x.range(std::log, 1, maxSize).label("FFT size");
 }
 
+template<typename Sample>
+struct SplitRunner {
+	using Complex = std::complex<Sample>;
+
+	signalsmith::linear::SplitFFT<Sample> fft;
+	
+	std::vector<Sample> timeR, timeI, freqR, freqI, time2R, time2I;
+	std::vector<Complex> time, freq, time2;
+	
+	void run(size_t n, signalsmith::plot::Line2D &line, double benchmarkSeconds) {
+		time.resize(n);
+		freq.resize(n);
+		time2.resize(n);
+
+		Stopwatch stopwatch;
+		fft.resize(n);
+
+		double totalTime = 0;
+		std::vector<double> stepTimes(fft.steps()*2);
+		while (totalTime < benchmarkSeconds) {
+			for (size_t s = 0; s < fft.steps(); ++s) {
+				stopwatch.start();
+				for (size_t r = 0; r < 10; ++r) {
+					fft.fft(s, time.data(), freq.data());
+				}
+				double t = stopwatch.lap();
+				totalTime += t;
+				stepTimes[s] += t;
+			}
+			for (size_t s = 0; s < fft.steps(); ++s) {
+				stopwatch.start();
+				for (size_t r = 0; r < 10; ++r) {
+					fft.ifft(s, freq.data(), time2.data());
+				}
+				double t = stopwatch.lap();
+				totalTime += t;
+				stepTimes[s + fft.steps()] += t;
+			}
+		}
+		for (size_t s = 0; s < stepTimes.size(); ++s) {
+			line.add(double(s)/stepTimes.size(), stepTimes[s]/totalTime);
+			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/totalTime);
+		}
+	}
+
+	void runSplit(size_t n, signalsmith::plot::Line2D &line, double benchmarkSeconds) {
+		timeR.resize(n);
+		timeI.resize(n);
+		freqR.resize(n);
+		freqI.resize(n);
+		time2R.resize(n);
+		time2I.resize(n);
+
+		Stopwatch stopwatch;
+		fft.resize(n);
+
+		double totalTime = 0;
+		std::vector<double> stepTimes(fft.steps()*2);
+		while (totalTime < benchmarkSeconds) {
+			for (size_t s = 0; s < fft.steps(); ++s) {
+				stopwatch.start();
+				for (size_t r = 0; r < 10; ++r) {
+					fft.fft(s, timeR.data(), timeI.data(), freqR.data(), freqI.data());
+				}
+				double t = stopwatch.lap();
+				totalTime += t;
+				stepTimes[s] += t;
+			}
+			for (size_t s = 0; s < fft.steps(); ++s) {
+				stopwatch.start();
+				for (size_t r = 0; r < 10; ++r) {
+					fft.ifft(s, freqR.data(), freqI.data(), time2R.data(), time2I.data());
+				}
+				double t = stopwatch.lap();
+				totalTime += t;
+				stepTimes[s + fft.steps()] += t;
+			}
+		}
+		for (size_t s = 0; s < stepTimes.size(); ++s) {
+			line.add(double(s)/stepTimes.size(), stepTimes[s]/totalTime);
+			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/totalTime);
+		}
+	}
+};
+
+void testComplexFftSplits(size_t maxSize, double benchmarkSeconds) {
+	std::cout << "\nfft splits\n----------\n";
+	benchmarkSeconds *= 1000;
+
+	signalsmith::plot::Figure figure;
+	auto &floatPlot = figure(0, 0).plot(250, 200).title("float");
+	floatPlot.y.major(0).label("time").minor(0.05, "5%").minor(0.1, "10%").minor(0.15, "15%").minor(0.2, "20%");
+	floatPlot.x.blank();
+	auto &floatSplitPlot = figure(1, 0).plot(250, 200).title("float (split-complex)");
+	floatSplitPlot.x.copyFrom(floatPlot.x);
+	floatSplitPlot.y.copyFrom(floatPlot.y).flip().label("");
+	auto &doublePlot = figure(0, 1).plot(250, 200).title("double");
+	doublePlot.x.copyFrom(floatPlot.x);
+	doublePlot.y.copyFrom(floatPlot.y);
+	auto &doubleSplitPlot = figure(1, 1).plot(250, 200).title("double (split-complex)");
+	doubleSplitPlot.x.copyFrom(floatPlot.x);
+	doubleSplitPlot.y.copyFrom(floatPlot.y).flip().label("");
+
+	SplitRunner<float> floatRunner;
+	SplitRunner<double> doubleRunner;
+	
+	auto runSize = [&](size_t n){
+		std::cout << "\tn = " << n << "      \r" << std::flush;
+		{
+			auto &line = floatPlot.fill().fillToY(0);
+			floatRunner.run(n, line, benchmarkSeconds);
+		}
+		{
+			auto &line = floatSplitPlot.fill().fillToY(0);
+			floatRunner.runSplit(n, line, benchmarkSeconds);
+		}
+		{
+			auto &line = doublePlot.fill().fillToY(0);
+			doubleRunner.run(n, line, benchmarkSeconds);
+		}
+		{
+			auto &line = doubleSplitPlot.fill().fillToY(0);
+			doubleRunner.runSplit(n, line, benchmarkSeconds);
+		}
+	};
+
+	runSize(256);
+	for (size_t m = 512; m <= maxSize; m *= 2) {
+		runSize(m/4*3);
+		runSize(m);
+		runSize(m/4*5);
+	}
+	std::cout << "\n";
+	
+	figure.write("fft-splits.svg");
+}
+
 void testFfts(int maxSize, double benchmarkSeconds) {
 	testComplexFfts(maxSize, benchmarkSeconds);
+	if (benchmarkSeconds > 0) {
+		testComplexFftSplits(maxSize, benchmarkSeconds);
+	}
 }
