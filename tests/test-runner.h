@@ -303,7 +303,7 @@ struct RunPlot {
 					std::cout << "\nsize = " << data.size << ", error = " << error << "\n";
 					std::cout << "\nReference:\n";
 					maybeRefData->log();
-					std::cout << "\nLinear:\n";
+					std::cout << "\noutput:\n";
 					data.log();
 					abort();
 				}

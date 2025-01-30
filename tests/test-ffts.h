@@ -20,7 +20,10 @@ struct SimpleWrapper {
 	}
 	
 	template<class Data>
-	void normalise(Data &) {}
+	void normalise(Data &data) {
+		data.complexToSplit(1);
+		data.complexToSplit(2);
+	}
 };
 
 template<class Sample>
@@ -61,7 +64,10 @@ struct Pow2Wrapper {
 	}
 
 	template<class Data>
-	void normalise(Data &) {}
+	void normalise(Data &data) {
+		data.complexToSplit(1);
+		data.complexToSplit(2);
+	}
 };
 template<class Sample>
 struct Pow2WrapperSplit {
@@ -101,7 +107,10 @@ struct SplitWrapper {
 	}
 
 	template<class Data>
-	void normalise(Data &) {}
+	void normalise(Data &data) {
+		data.complexToSplit(1);
+		data.complexToSplit(2);
+	}
 };
 template<class Sample>
 struct SplitWrapperSplit {
@@ -142,7 +151,10 @@ struct SignalsmithFFTWrapper {
 	}
 
 	template<class Data>
-	void normalise(Data &) {}
+	void normalise(Data &data) {
+		data.complexToSplit(1);
+		data.complexToSplit(2);
+	}
 };
 
 #include "./others/dsp/fft.h"
@@ -162,7 +174,10 @@ struct SignalsmithDSPWrapper {
 	}
 
 	template<class Data>
-	void normalise(Data &) {}
+	void normalise(Data &data) {
+		data.complexToSplit(1);
+		data.complexToSplit(2);
+	}
 };
 
 // ---------- main code
@@ -197,7 +212,7 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 	auto dspDouble = plot.runner<SignalsmithDSPWrapper<double>>("DSP library (double)");
 	auto dspFloat = plot.runner<SignalsmithDSPWrapper<float>>("DSP library (float)");
 
-	auto runSize = [&](int n, int pow3=0, int pow5=0, int pow7=0){
+	auto runSize = [&](int n, int pow3=0, int pow5=0, int pow7=0, bool alwaysRunSplit=false){
 		std::cout << "                n = " << n << "\r" << std::flush;
 		double refTime = 1e-8*n*(std::log2(n) + 1); // heuristic for expected computation time, just to compare different sizes
 
@@ -216,10 +231,10 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 		bool checkResults = true;
 #if defined(__FAST_MATH__) && (__apple_build_version__ >= 16000000) && (__apple_build_version__ <= 16000099)
 		// Apple Clang 16.0.0 is broken, and generates *completely* incorrect code for some SIMD operations
-		checkResults = false;
+		checkResults = (n < 48); // below this, it doesn't use the broken SIMD operations
 #endif
 
-		if (n < 256 && checkResults) {
+		if (checkResults && n < 256) {
 			refPtrDouble = &refDataDouble;
 			refPtrFloat = &refDataFloat;
 			auto *timeDouble = refDataDouble.complex(0);
@@ -273,7 +288,7 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 			std::cout << "DSP float           \r";
 			dspFloat.run(dataFloat, refTime, refPtrFloat);
 		}
-		if (signalsmith::linear::SplitFFT<double>::fastSizeAbove(n) == size_t(n)) {
+		if (alwaysRunSplit || signalsmith::linear::SplitFFT<double>::fastSizeAbove(n) == size_t(n)) {
 			std::cout << "split double           \r";
 			splitDouble.run(dataDouble, refTime, refPtrDouble);
 			std::cout << "split float           \r";
@@ -284,11 +299,19 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 			splitFloatSplit.run(dataFloat, refTime, refPtrFloat);
 		}
 	};
+
+	if (benchmarkSeconds == 0) {
+		// test the split FFT
+		for (int n = 1; n >= 256; --n) {
+			runSize(n, -1, -1, -1, true);
+		}
+	}
+	
 	for (int n = 1; n <= maxSize; n *= 2) {
 		if (n/16) runSize(n*9/16, 2);
 		if (n/8) runSize(n*5/8, 0, 1);
 		if (n/4) runSize(n*3/4, 1);
-		if (n/8) runSize(n*7/8, 1, 1);
+		if (n/8) runSize(n*7/8, 0, 0, 1);
 		if (n/16) runSize(n*15/16, 1, 1);
 		runSize(n);
 

@@ -236,11 +236,12 @@ struct SplitFFT {
 	void resize(size_t size) {
 		innerSize = 1;
 		outerSize = size;
-		// Inner size = largest power of 2 such that either the inner size >= maxSize, or we have the target number of splits
+		// Inner size = largest power of 2 such that either the inner size >= minInnerSize, or we have the target number of splits
 		while (!(outerSize&1) && (outerSize > maxSplit || innerSize < minInnerSize)) {
 			innerSize *= 2;
 			outerSize /= 2;
 		}
+		tmpStride.resize(0);
 		tmpFreq.resize(innerSize);
 		innerFFT.resize(innerSize);
 		
@@ -276,6 +277,7 @@ struct SplitFFT {
 		} else if (finalStep == (StepType)0) {
 			stepTypes.assign(outerSize, StepType::middleWithoutFinal);
 			stepTypes[0] = StepType::firstWithoutFinal;
+			tmpStride.resize(innerSize); // We need more temporary data in this case
 		} else {
 			stepTypes.assign(outerSize, StepType::middleWithFinal);
 			stepTypes[0] = StepType::firstWithFinal;
@@ -315,7 +317,7 @@ private:
 	InnerFFT innerFFT;
 
 	size_t innerSize, outerSize;
-	std::vector<Complex> tmpFreq;
+	std::vector<Complex> tmpFreq, tmpStride;
 	std::vector<Complex> outerTwiddles;
 	std::vector<Sample> outerTwiddlesR, outerTwiddlesI;
 	std::vector<Complex> dftTwists;
@@ -357,36 +359,37 @@ private:
 			}
 			case (StepType::middleWithFinal): {
 				const Complex *offsetTime = time + s;
+				Complex *offsetOut = freq + s*innerSize;
 				for (size_t i = 0; i < innerSize; ++i) {
-					freq[i] = offsetTime[i*outerSize];
+					offsetOut[i] = offsetTime[i*outerSize];
 				}
 				if (inverse) {
-					innerFFT.ifft(freq, tmpFreq.data());
+					innerFFT.ifft(offsetOut, tmpFreq.data());
 				} else {
-					innerFFT.fft(freq, tmpFreq.data());
+					innerFFT.fft(offsetOut, tmpFreq.data());
 				}
 				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We'll do the final DFT in-place, as extra passes
 				if (inverse) {
-					_impl::complexMulConj(freq + s*innerSize, tmpFreq.data(), twiddles, innerSize);
+					_impl::complexMulConj(offsetOut, tmpFreq.data(), twiddles, innerSize);
 				} else {
-					_impl::complexMul(freq + s*innerSize, tmpFreq.data(), twiddles, innerSize);
+					_impl::complexMul(offsetOut, tmpFreq.data(), twiddles, innerSize);
 				}
 				break;
 			}
 			case (StepType::middleWithoutFinal): {
 				const Complex *offsetTime = time + s;
 				for (size_t i = 0; i < innerSize; ++i) {
-					freq[i] = offsetTime[i*outerSize];
+					tmpStride[i] = offsetTime[i*outerSize];
 				}
 				if (inverse) {
-					innerFFT.ifft(freq, tmpFreq.data());
+					innerFFT.ifft(tmpStride.data(), tmpFreq.data());
 				} else {
-					innerFFT.fft(freq, tmpFreq.data());
+					innerFFT.fft(tmpStride.data(), tmpFreq.data());
 				}
+				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
-
 				// We have to do the final DFT right here
 				for (size_t i = 0; i < innerSize; ++i) {
 					Complex v = tmpFreq[i]*(inverse ? std::conj(twiddles[i]) : twiddles[i]);
@@ -456,50 +459,53 @@ private:
 			case (StepType::middleWithFinal): {
 				const Sample *offsetR = inR + s;
 				const Sample *offsetI = inI + s;
+				Sample *offsetOutR = outR + s*innerSize;
+				Sample *offsetOutI = outI + s*innerSize;
 				for (size_t i = 0; i < innerSize; ++i) {
-					outR[i] = offsetR[i*outerSize];
-					outI[i] = offsetI[i*outerSize];
+					offsetOutR[i] = offsetR[i*outerSize];
+					offsetOutI[i] = offsetI[i*outerSize];
 				}
 				if (inverse) {
-					innerFFT.ifft(outR, outI, tmpR, tmpI);
+					innerFFT.ifft(offsetOutR, offsetOutI, tmpR, tmpI);
 				} else {
-					innerFFT.fft(outR, outI, tmpR, tmpI);
+					innerFFT.fft(offsetOutR, offsetOutI, tmpR, tmpI);
 				}
 				
 				auto *twiddlesR = outerTwiddlesR.data() + s*innerSize;
 				auto *twiddlesI = outerTwiddlesI.data() + s*innerSize;
 				// We'll do the final DFT in-place, as extra passes
 				if (inverse) {
-					_impl::complexMulConj(outR + s*innerSize, outI + s*innerSize, tmpR, tmpI, twiddlesR, twiddlesI, innerSize);
+					_impl::complexMulConj(offsetOutR, offsetOutI, tmpR, tmpI, twiddlesR, twiddlesI, innerSize);
 				} else {
-					_impl::complexMul(outR + s*innerSize, outI + s*innerSize, tmpR, tmpI, twiddlesR, twiddlesI, innerSize);
+					_impl::complexMul(offsetOutR, offsetOutI, tmpR, tmpI, twiddlesR, twiddlesI, innerSize);
 				}
 				break;
 			}
 			case (StepType::middleWithoutFinal): {
 				const Sample *offsetR = inR + s;
 				const Sample *offsetI = inI + s;
+				Sample *tmpStrideR = (Sample *)tmpStride.data();
+				Sample *tmpStrideI = tmpStrideR + innerSize;
 				for (size_t i = 0; i < innerSize; ++i) {
-					outR[i] = offsetR[i*outerSize];
-					outI[i] = offsetI[i*outerSize];
+					tmpStrideR[i] = offsetR[i*outerSize];
+					tmpStrideI[i] = offsetI[i*outerSize];
 				}
 				if (inverse) {
-					innerFFT.ifft(outR, outI, tmpR, tmpI);
+					innerFFT.ifft(tmpStrideR, tmpStrideI, tmpR, tmpI);
 				} else {
-					innerFFT.fft(outR, outI, tmpR, tmpI);
+					innerFFT.fft(tmpStrideR, tmpStrideI, tmpR, tmpI);
 				}
-				
+
 				auto *twiddlesR = outerTwiddlesR.data() + s*innerSize;
 				auto *twiddlesI = outerTwiddlesI.data() + s*innerSize;
 				// We have to do the final DFT right here
 				for (size_t i = 0; i < innerSize; ++i) {
-					Complex v = Complex{tmpR[i], tmpI[i]}*Complex{twiddlesR[i], inverse ? twiddlesI[i] : -twiddlesI[i]};
+					Complex v = Complex{tmpR[i], tmpI[i]}*Complex{twiddlesR[i], inverse ? -twiddlesI[i] : twiddlesI[i]};
 					tmpR[i] = v.real();
 					tmpI[i] = v.imag();
 					outR[i] += v.real();
 					outI[i] += v.imag();
 				}
-
 				for (size_t f = 1; f < outerSize; ++f) {
 					Complex dftTwist = dftTwists[(f*s)%outerSize];
 					for (size_t i = 0; i < innerSize; ++i) {
