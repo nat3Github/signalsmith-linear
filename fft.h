@@ -619,9 +619,9 @@ private:
 			f1r[i] = inverse ? (ac1r - bd1i) : (ac1r + bd1i);
 			f1i[i] = inverse ? (ac1i + bd1r) : (ac1i - bd1r);
 			f2r[i] = ac0r - bd0r;
-			f2i[i] = ac0r - bd0r;
-			f1r[i] = inverse ? (ac1r + bd1i) : (ac1r - bd1i);
-			f1i[i] = inverse ? (ac1i - bd1r) : (ac1i + bd1r);
+			f2i[i] = ac0i - bd0i;
+			f3r[i] = inverse ? (ac1r + bd1i) : (ac1r - bd1i);
+			f3i[i] = inverse ? (ac1i - bd1r) : (ac1i + bd1r);
 		}
 	}
 	template<bool inverse>
