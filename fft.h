@@ -591,11 +591,12 @@ private:
 			Complex a = f0[i], b = f1[i], c = f2[i], d = f3[i];
 			
 			Complex ac0 = a + c, ac1 = a - c;
-			Complex bd0 = b + d, bd1 = b - d;
+			Complex bd0 = b + d, bd1 = inverse ? (b - d) : (d - b);
+			Complex bd1i = {-bd1.imag(), bd1.real()};
 			f0[i] = ac0 + bd0;
-			f1[i] = ac1 + bd1*Complex{0, inverse ? 1 : -1};
+			f1[i] = ac1 + bd1i;
 			f2[i] = ac0 - bd0;
-			f3[i] = ac1 - bd1*Complex{0, inverse ? 1 : -1};
+			f3[i] = ac1 - bd1i;
 		}
 	}
 	template<bool inverse>
@@ -630,14 +631,26 @@ private:
 		auto *f2 = f0 + innerSize*2;
 		auto *f3 = f0 + innerSize*3;
 		auto *f4 = f0 + innerSize*4;
-		const Complex tw1{0.30901699437494745, -0.9510565162951535*(inverse ? -1 : 1)}, tw2{-0.8090169943749473, -0.5877852522924732*(inverse ? -1 : 1)};
+		const Sample tw1r = 0.30901699437494745;
+		const Sample tw1i = -0.9510565162951535*(inverse ? -1 : 1);
+		const Sample tw2r = -0.8090169943749473;
+		const Sample tw2i = -0.5877852522924732*(inverse ? -1 : 1);
 		for (size_t i = 0; i < innerSize; ++i) {
 			Complex a = f0[i], b = f1[i], c = f2[i], d = f3[i], e = f4[i];
-			f0[i] = a + b + c + d + e;
-			f1[i] = a + b*tw1 + c*tw2 + d*std::conj(tw2) + e*std::conj(tw1);
-			f2[i] = a + b*tw2 + c*std::conj(tw1) + d*tw1 + e*std::conj(tw2);
-			f3[i] = a + b*std::conj(tw2) + c*tw1 + d*std::conj(tw1) + e*tw2;
-			f4[i] = a + b*std::conj(tw1) + c*std::conj(tw2) + d*tw2 + e*tw1;
+
+			Complex be0 = b + e, be1 = {e.imag() - b.imag(), b.real() - e.real()}; // (b - e)*i
+			Complex cd0 = c + d, cd1 = {d.imag() - c.imag(), c.real() - d.real()};
+			
+			Complex bcde01 = be0*tw1r + cd0*tw2r;
+			Complex bcde02 = be0*tw2r + cd0*tw1r;
+			Complex bcde11 = be1*tw1i + cd1*tw2i;
+			Complex bcde12 = be1*tw2i - cd1*tw1i;
+
+			f0[i] = a + be0 + cd0;
+			f1[i] = a + bcde01 + bcde11;
+			f2[i] = a + bcde02 + bcde12;
+			f3[i] = a + bcde02 - bcde12;
+			f4[i] = a + bcde01 - bcde11;
 		}
 	}
 	template<bool inverse>
@@ -658,18 +671,21 @@ private:
 		for (size_t i = 0; i < innerSize; ++i) {
 			Sample ar = f0r[i], ai = f0i[i], br = f1r[i], bi = f1i[i], cr = f2r[i], ci = f2i[i], dr = f3r[i], di = f3i[i], er = f4r[i], ei = f4i[i];
 
-			f0r[i] = ar + br + cr + dr + er;
-			f0i[i] = ai + bi + ci + di + ei;
-			f1r[i] = ar + br*tw1r - bi*tw1i + cr*tw2r - ci*tw2i + dr*tw2r + di*tw2i + er*tw1r + ei*tw1i;
-			f1i[i] = ai + bi*tw1r + br*tw1i + ci*tw2r + cr*tw2i + di*tw2r - dr*tw2i + ei*tw1r - er*tw1i;
+			Sample be0r = br + er, be0i = bi + ei;
+			Sample be1r = br - er, be1i = ei - bi;
+			Sample cd0r = cr + dr, cd0i = ci + di;
+			Sample cd1r = cr - dr, cd1i = di - ci;
 
-			f2r[i] = ar + br*tw2r - bi*tw2i + cr*tw1r + ci*tw1i + dr*tw1r - di*tw1i + er*tw2r + ei*tw2i;
-			f2i[i] = ai + bi*tw2r + br*tw2i + ci*tw1r - cr*tw1i + di*tw1r + dr*tw1i + ei*tw2r - er*tw2i;
-			f3r[i] = ar + br*tw2r + bi*tw2i + cr*tw1r - ci*tw1i + dr*tw1r + di*tw1i + er*tw2r - ei*tw2i;
-			f3i[i] = ai + bi*tw2r - br*tw2i + ci*tw1r + cr*tw1i + di*tw1r - dr*tw1i + ei*tw2r + er*tw2i;
-
-			f4r[i] = ar + br*tw1r + bi*tw1i + cr*tw2r + ci*tw2i + dr*tw2r - di*tw2i + er*tw1r - ei*tw1i;
-			f4i[i] = ai + bi*tw1r - br*tw1i + ci*tw2r - cr*tw2i + di*tw2r + dr*tw2i + ei*tw1r + er*tw1i;
+			f0r[i] = ar + be0r + cd0r;
+			f0i[i] = ai + be0i + cd0i;
+			f1r[i] = ar + be0r*tw1r + be1i*tw1i + cd0r*tw2r + cd1i*tw2i;
+			f1i[i] = ai + be0i*tw1r + be1r*tw1i + cd0i*tw2r + cd1r*tw2i;
+			f2r[i] = ar + be0r*tw2r + be1i*tw2i + cd0r*tw1r - cd1i*tw1i;
+			f2i[i] = ai + be0i*tw2r + be1r*tw2i + cd0i*tw1r - cd1r*tw1i;
+			f3r[i] = ar + be0r*tw2r - be1i*tw2i + cd0r*tw1r + cd1i*tw1i;
+			f3i[i] = ai + be0i*tw2r - be1r*tw2i + cd0i*tw1r + cd1r*tw1i;
+			f4r[i] = ar + be0r*tw1r - be1i*tw1i + cd0r*tw2r - cd1i*tw2i;
+			f4i[i] = ai + be0i*tw1r - be1r*tw1i + cd0i*tw2r - cd1r*tw2i;
 		}
 	}
 };
