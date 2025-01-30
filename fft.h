@@ -129,7 +129,8 @@ private:
 			Complex *outputB = output + (i + size/2)*stride;
 			for (size_t s = 0; s < stride; ++s) {
 				Complex a = inputA[s];
-				Complex b = inputB[s]*(inverse ? std::conj(twiddle) : twiddle);
+				Complex b = inputB[s];
+				b = inverse ? Complex{b.real()*twiddle.real() + b.imag()*twiddle.imag(), b.imag()*twiddle.real() - b.real()*twiddle.imag()} : Complex{b.real()*twiddle.real() - b.imag()*twiddle.imag(), b.imag()*twiddle.real() + b.real()*twiddle.imag()};
 				outputA[s] = a + b;
 				outputB[s] = a - b;
 			}
@@ -166,7 +167,8 @@ private:
 			Sample *outputBI = outputI + (i + size/2)*stride;
 			for (size_t s = 0; s < stride; ++s) {
 				Complex a = {inputAR[s], inputAI[s]};
-				Complex b = Complex{inputBR[s], inputBI[s]}*(inverse ? std::conj(twiddle) : twiddle);
+				Complex b = {inputBR[s], inputBI[s]};
+				b = inverse ? Complex{b.real()*twiddle.real() + b.imag()*twiddle.imag(), b.imag()*twiddle.real() - b.real()*twiddle.imag()} : Complex{b.real()*twiddle.real() - b.imag()*twiddle.imag(), b.imag()*twiddle.real() + b.real()*twiddle.imag()};
 				Complex sum = a + b, diff = a - b;
 				outputAR[s] = sum.real();
 				outputAI[s] = sum.imag();
