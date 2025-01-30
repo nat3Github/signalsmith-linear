@@ -15,13 +15,15 @@ namespace _impl {
 	template<class V>
 	void complexMul(std::complex<V> *a, const std::complex<V> *b, const std::complex<V> *c, size_t size) {
 		for (size_t i = 0; i < size; ++i) {
-			a[i] = b[i]*c[i];
+			auto bi = b[i], ci = c[i];
+			a[i] = {bi.real()*ci.real() - bi.imag()*ci.imag(), bi.imag()*ci.real() + bi.real()*ci.imag()};
 		}
 	}
 	template<class V>
 	void complexMulConj(std::complex<V> *a, const std::complex<V> *b, const std::complex<V> *c, size_t size) {
 		for (size_t i = 0; i < size; ++i) {
-			a[i] = b[i]*std::conj(c[i]);
+			auto bi = b[i], ci = c[i];
+			a[i] = {bi.real()*ci.real() + bi.imag()*ci.imag(), bi.imag()*ci.real() - bi.real()*ci.imag()};
 		}
 	}
 	template<class V>
@@ -40,6 +42,20 @@ namespace _impl {
 			V ri = cr[i]*bi[i] - ci[i]*br[i];
 			ar[i] = rr;
 			ai[i] = ri;
+		}
+	}
+
+	template<class V>
+	void strideCopy(const std::complex<V> *a, size_t aStride, std::complex<V> *b, size_t size) {
+		for (size_t i = 0; i < size; ++i) {
+			b[i] = a[i*aStride];
+		}
+	}
+	template<class V>
+	void strideCopy(const V *ar, const V *ai, size_t aStride, V *br, V *bi, size_t size) {
+		for (size_t i = 0; i < size; ++i) {
+			br[i] = ar[i*aStride];
+			bi[i] = ai[i*aStride];
 		}
 	}
 }
@@ -216,10 +232,10 @@ private:
 };
 
 /// An FFT which can be computed in chunks
-template<typename Sample>
+template<typename Sample, bool splitComputation=false>
 struct SplitFFT {
 	using Complex = std::complex<Sample>;
-	static constexpr size_t maxSplit = 4;
+	static constexpr size_t maxSplit = splitComputation ? 4 : 1;
 	static constexpr size_t minInnerSize = 32;
 	
 	static size_t fastSizeAbove(size_t size) {
@@ -273,9 +289,9 @@ struct SplitFFT {
 		if (outerSize == 4) finalStep = StepType::finalOrder4;
 		if (outerSize == 5) finalStep = StepType::finalOrder5;
 		
-		if (size <= 1) {
+		if (outerSize <= 1) {
 			stepTypes.clear();
-			if (size > 0) stepTypes.push_back(StepType::firstWithFinal); // This should just copy, but it's a rare enough case to not need an enum value
+			if (size > 0) stepTypes.push_back(StepType::firstWithFinal); // This just calls innerFFT
 		} else if (finalStep == (StepType)0) {
 			stepTypes.assign(outerSize, StepType::middleWithoutFinal);
 			stepTypes[0] = StepType::firstWithoutFinal;
@@ -343,20 +359,24 @@ private:
 	void fftStep(size_t s, const Complex *time, Complex *freq) {
 		switch (stepTypes[s]) {
 			case (StepType::firstWithFinal): {
-				for (size_t i = 0; i < innerSize; ++i) {
-					tmpFreq[i] = time[i*outerSize];
-				}
-				if (inverse) {
-					innerFFT.ifft(tmpFreq.data(), freq);
+				if (outerSize == 1) {
+					if (inverse) {
+						innerFFT.ifft(time, freq);
+					} else {
+						innerFFT.fft(time, freq);
+					}
 				} else {
-					innerFFT.fft(tmpFreq.data(), freq);
+					_impl::strideCopy(time, outerSize, tmpFreq.data(), innerSize);
+					if (inverse) {
+						innerFFT.ifft(tmpFreq.data(), freq);
+					} else {
+						innerFFT.fft(tmpFreq.data(), freq);
+					}
 				}
 				break;
 			}
 			case (StepType::firstWithoutFinal): {
-				for (size_t i = 0; i < innerSize; ++i) {
-					tmpFreq[i] = time[i*outerSize];
-				}
+				_impl::strideCopy(time, outerSize, tmpFreq.data(), innerSize);
 				if (inverse) {
 					innerFFT.ifft(tmpFreq.data(), freq);
 				} else {
@@ -374,29 +394,26 @@ private:
 			case (StepType::middleWithFinal): {
 				const Complex *offsetTime = time + s;
 				Complex *offsetOut = freq + s*innerSize;
-				for (size_t i = 0; i < innerSize; ++i) {
-					offsetOut[i] = offsetTime[i*outerSize];
-				}
+				
+				_impl::strideCopy(offsetTime, outerSize, tmpFreq.data(), innerSize);
 				if (inverse) {
-					innerFFT.ifft(offsetOut, tmpFreq.data());
+					innerFFT.ifft(tmpFreq.data(), offsetOut);
 				} else {
-					innerFFT.fft(offsetOut, tmpFreq.data());
+					innerFFT.fft(tmpFreq.data(), offsetOut);
 				}
 				
 				auto *twiddles = outerTwiddles.data() + s*innerSize;
 				// We'll do the final DFT in-place, as extra passes
 				if (inverse) {
-					_impl::complexMulConj(offsetOut, tmpFreq.data(), twiddles, innerSize);
+					_impl::complexMulConj(offsetOut, offsetOut, twiddles, innerSize);
 				} else {
-					_impl::complexMul(offsetOut, tmpFreq.data(), twiddles, innerSize);
+					_impl::complexMul(offsetOut, offsetOut, twiddles, innerSize);
 				}
 				break;
 			}
 			case (StepType::middleWithoutFinal): {
 				const Complex *offsetTime = time + s;
-				for (size_t i = 0; i < innerSize; ++i) {
-					tmpStride[i] = offsetTime[i*outerSize];
-				}
+				_impl::strideCopy(offsetTime, outerSize, tmpStride.data(), innerSize);
 				if (inverse) {
 					innerFFT.ifft(tmpStride.data(), tmpFreq.data());
 				} else {
@@ -438,22 +455,24 @@ private:
 		Sample *tmpR = (Sample *)tmpFreq.data(), *tmpI = tmpR + tmpFreq.size();
 		switch (stepTypes[s]) {
 			case (StepType::firstWithFinal): {
-				for (size_t i = 0; i < innerSize; ++i) {
-					tmpR[i] = inR[i*outerSize];
-					tmpI[i] = inI[i*outerSize];
-				}
-				if (inverse) {
-					innerFFT.ifft(tmpR, tmpI, outR, outI);
+				if (outerSize == 1) {
+					if (inverse) {
+						innerFFT.ifft(inR, inI, outR, outI);
+					} else {
+						innerFFT.fft(inR, inI, outR, outI);
+					}
 				} else {
-					innerFFT.fft(tmpR, tmpI, outR, outI);
+					_impl::strideCopy(inR, inI, outerSize, tmpR, tmpI, innerSize);
+					if (inverse) {
+						innerFFT.ifft(tmpR, tmpI, outR, outI);
+					} else {
+						innerFFT.fft(tmpR, tmpI, outR, outI);
+					}
 				}
 				break;
 			}
 			case (StepType::firstWithoutFinal): {
-				for (size_t i = 0; i < innerSize; ++i) {
-					tmpR[i] = inR[i*outerSize];
-					tmpI[i] = inI[i*outerSize];
-				}
+				_impl::strideCopy(inR, inI, outerSize, tmpR, tmpI, innerSize);
 				if (inverse) {
 					innerFFT.ifft(tmpR, tmpI, outR, outI);
 				} else {
@@ -475,10 +494,7 @@ private:
 				const Sample *offsetI = inI + s;
 				Sample *offsetOutR = outR + s*innerSize;
 				Sample *offsetOutI = outI + s*innerSize;
-				for (size_t i = 0; i < innerSize; ++i) {
-					offsetOutR[i] = offsetR[i*outerSize];
-					offsetOutI[i] = offsetI[i*outerSize];
-				}
+				_impl::strideCopy(offsetR, offsetI, outerSize, offsetOutR, offsetOutI, innerSize);
 				if (inverse) {
 					innerFFT.ifft(offsetOutR, offsetOutI, tmpR, tmpI);
 				} else {
@@ -500,10 +516,7 @@ private:
 				const Sample *offsetI = inI + s;
 				Sample *tmpStrideR = (Sample *)tmpStride.data();
 				Sample *tmpStrideI = tmpStrideR + innerSize;
-				for (size_t i = 0; i < innerSize; ++i) {
-					tmpStrideR[i] = offsetR[i*outerSize];
-					tmpStrideI[i] = offsetI[i*outerSize];
-				}
+				_impl::strideCopy(offsetR, offsetI, outerSize, tmpStrideR, tmpStrideI, innerSize);
 				if (inverse) {
 					innerFFT.ifft(tmpStrideR, tmpStrideI, tmpR, tmpI);
 				} else {

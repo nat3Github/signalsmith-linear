@@ -365,9 +365,10 @@ struct SplitRunner {
 				stepTimes[s + fft.steps()] += t;
 			}
 		}
+		Sample averageTime = totalTime/stepTimes.size();
 		for (size_t s = 0; s < stepTimes.size(); ++s) {
-			line.add(double(s)/stepTimes.size(), stepTimes[s]/totalTime);
-			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/totalTime);
+			line.add(double(s)/stepTimes.size(), stepTimes[s]/averageTime);
+			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/averageTime);
 		}
 	}
 
@@ -404,9 +405,10 @@ struct SplitRunner {
 				stepTimes[s + fft.steps()] += t;
 			}
 		}
+		Sample averageTime = totalTime/stepTimes.size();
 		for (size_t s = 0; s < stepTimes.size(); ++s) {
-			line.add(double(s)/stepTimes.size(), stepTimes[s]/totalTime);
-			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/totalTime);
+			line.add(double(s)/stepTimes.size(), stepTimes[s]/averageTime);
+			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/averageTime);
 		}
 	}
 };
@@ -417,7 +419,7 @@ void testComplexFftSplits(size_t maxSize, double benchmarkSeconds) {
 
 	signalsmith::plot::Figure figure;
 	auto &floatPlot = figure(0, 0).plot(250, 200).title("float");
-	floatPlot.y.major(0).label("time").minor(0.05, "5%").minor(0.1, "10%").minor(0.15, "15%").minor(0.2, "20%");
+	floatPlot.y.major(0).label("time").minor(1, "100%").minor(0.5, "50%").minor(1.5, "150%");
 	floatPlot.x.blank();
 	auto &floatSplitPlot = figure(1, 0).plot(250, 200).title("float (split-complex)");
 	floatSplitPlot.x.copyFrom(floatPlot.x);
