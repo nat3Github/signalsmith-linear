@@ -569,18 +569,17 @@ private:
 		auto *f1i = f0i + innerSize;
 		auto *f2r = f0r + innerSize*2;
 		auto *f2i = f0i + innerSize*2;
-		const Complex tw1{Sample(-0.5), Sample(-std::sqrt(0.75)*(inverse ? -1 : 1))};
+		const Sample tw1r = -0.5, tw1i = -std::sqrt(0.75)*(inverse ? -1 : 1);
+		
 		for (size_t i = 0; i < innerSize; ++i) {
-			Complex a = {f0r[i], f0i[i]}, b = {f1r[i], f1i[i]}, c = {f2r[i], f2i[i]};
-			Complex f0 = a + b + c;
-			f0r[i] = f0.real();
-			f0i[i] = f0.imag();
-			Complex f1 = a + b*tw1 + c*std::conj(tw1);
-			f1r[i] = f1.real();
-			f1i[i] = f1.imag();
-			Complex f2 = a + b*std::conj(tw1) + c*tw1;
-			f2r[i] = f2.real();
-			f2i[i] = f2.imag();
+			Sample ar = f0r[i], ai = f0i[i], br = f1r[i], bi = f1i[i], cr = f2r[i], ci = f2i[i];
+
+			f0r[i] = ar + br + cr;
+			f0i[i] = ai + bi + ci;
+			f1r[i] = ar + br*tw1r - bi*tw1i + cr*tw1r + ci*tw1i;
+			f1i[i] = ai + bi*tw1r + br*tw1i - cr*tw1i + ci*tw1r;
+			f2r[i] = ar + br*tw1r + bi*tw1i + cr*tw1r - ci*tw1i;
+			f2i[i] = ai + bi*tw1r - br*tw1i + cr*tw1i + ci*tw1r;
 		}
 	}
 	template<bool inverse>
@@ -608,22 +607,21 @@ private:
 		auto *f3r = f0r + innerSize*3;
 		auto *f3i = f0i + innerSize*3;
 		for (size_t i = 0; i < innerSize; ++i) {
-			Complex a = {f0r[i], f0i[i]}, b = {f1r[i], f1i[i]}, c = {f2r[i], f2i[i]}, d = {f3r[i], f3i[i]};
+			Sample ar = f0r[i], ai = f0i[i], br = f1r[i], bi = f1i[i], cr = f2r[i], ci = f2i[i], dr = f3r[i], di = f3i[i];
 			
-			Complex ac0 = a + c, ac1 = a - c;
-			Complex bd0 = b + d, bd1 = b - d;
-			Complex f0 = ac0 + bd0;
-			f0r[i] = f0.real();
-			f0i[i] = f0.imag();
-			Complex f1 = ac1 + bd1*Complex{0, inverse ? 1 : -1};
-			f1r[i] = f1.real();
-			f1i[i] = f1.imag();
-			Complex f2 = ac0 - bd0;
-			f2r[i] = f2.real();
-			f2i[i] = f2.imag();
-			Complex f3 = ac1 - bd1*Complex{0, inverse ? 1 : -1};
-			f3r[i] = f3.real();
-			f3i[i] = f3.imag();
+			Sample ac0r = ar + cr, ac0i = ai + ci;
+			Sample ac1r = ar - cr, ac1i = ai - ci;
+			Sample bd0r = br + dr, bd0i = bi + di;
+			Sample bd1r = br - dr, bd1i = bi - di;
+			
+			f0r[i] = ac0r + bd0r;
+			f0i[i] = ac0i + bd0i;
+			f1r[i] = inverse ? (ac1r - bd1i) : (ac1r + bd1i);
+			f1i[i] = inverse ? (ac1i + bd1r) : (ac1i - bd1r);
+			f2r[i] = ac0r - bd0r;
+			f2i[i] = ac0r - bd0r;
+			f1r[i] = inverse ? (ac1r + bd1i) : (ac1r - bd1i);
+			f1i[i] = inverse ? (ac1i - bd1r) : (ac1i + bd1r);
 		}
 	}
 	template<bool inverse>
