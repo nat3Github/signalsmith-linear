@@ -650,24 +650,26 @@ private:
 		auto *f3i = f0i + innerSize*3;
 		auto *f4r = f0r + innerSize*4;
 		auto *f4i = f0i + innerSize*4;
-		const Complex tw1{0.30901699437494745, -0.9510565162951535*(inverse ? -1 : 1)}, tw2{-0.8090169943749473, -0.5877852522924732*(inverse ? -1 : 1)};
+		
+		const Sample tw1r = 0.30901699437494745;
+		const Sample tw1i = -0.9510565162951535*(inverse ? -1 : 1);
+		const Sample tw2r = -0.8090169943749473;
+		const Sample tw2i = -0.5877852522924732*(inverse ? -1 : 1);
 		for (size_t i = 0; i < innerSize; ++i) {
-			Complex a = {f0r[i], f0i[i]}, b = {f1r[i], f1i[i]}, c = {f2r[i], f2i[i]}, d = {f3r[i], f3i[i]}, e = {f4r[i], f4i[i]};
-			Complex f0 = a + b + c + d + e;
-			f0r[i] = f0.real();
-			f0i[i] = f0.imag();
-			Complex f1 = a + b*tw1 + c*tw2 + d*std::conj(tw2) + e*std::conj(tw1);
-			f1r[i] = f1.real();
-			f1i[i] = f1.imag();
-			Complex f2 = a + b*tw2 + c*std::conj(tw1) + d*tw1 + e*std::conj(tw2);
-			f2r[i] = f2.real();
-			f2i[i] = f2.imag();
-			Complex f3 = a + b*std::conj(tw2) + c*tw1 + d*std::conj(tw1) + e*tw2;
-			f3r[i] = f3.real();
-			f3i[i] = f3.imag();
-			Complex f4 = a + b*std::conj(tw1) + c*std::conj(tw2) + d*tw2 + e*tw1;
-			f4r[i] = f4.real();
-			f4i[i] = f4.imag();
+			Sample ar = f0r[i], ai = f0i[i], br = f1r[i], bi = f1i[i], cr = f2r[i], ci = f2i[i], dr = f3r[i], di = f3i[i], er = f4r[i], ei = f4i[i];
+
+			f0r[i] = ar + br + cr + dr + er;
+			f0i[i] = ai + bi + ci + di + ei;
+			f1r[i] = ar + br*tw1r - bi*tw1i + cr*tw2r - ci*tw2i + dr*tw2r + di*tw2i + er*tw1r + ei*tw1i;
+			f1i[i] = ai + bi*tw1r + br*tw1i + ci*tw2r + cr*tw2i + di*tw2r - dr*tw2i + ei*tw1r - er*tw1i;
+
+			f2r[i] = ar + br*tw2r - bi*tw2i + cr*tw1r + ci*tw1i + dr*tw1r - di*tw1i + er*tw2r + ei*tw2i;
+			f2i[i] = ai + bi*tw2r + br*tw2i + ci*tw1r - cr*tw1i + di*tw1r + dr*tw1i + ei*tw2r - er*tw2i;
+			f3r[i] = ar + br*tw2r + bi*tw2i + cr*tw1r - ci*tw1i + dr*tw1r + di*tw1i + er*tw2r - ei*tw2i;
+			f3i[i] = ai + bi*tw2r - br*tw2i + ci*tw1r + cr*tw1i + di*tw1r - dr*tw1i + ei*tw2r + er*tw2i;
+
+			f4r[i] = ar + br*tw1r + bi*tw1i + cr*tw2r + ci*tw2i + dr*tw2r - di*tw2i + er*tw1r - ei*tw1i;
+			f4i[i] = ai + bi*tw1r - br*tw1i + ci*tw2r - cr*tw2i + di*tw2r + dr*tw2i + ei*tw1r + er*tw1i;
 		}
 	}
 };
