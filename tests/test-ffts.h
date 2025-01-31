@@ -93,7 +93,7 @@ struct Pow2WrapperSplit {
 
 template<class Sample>
 struct SplitWrapper {
-	signalsmith::linear::SplitFFT<Sample> fft;
+	signalsmith::linear::SplitFFT<Sample, true> fft;
 
 	void prepare(size_t size, size_t) {
 		fft.resize(size);
@@ -114,7 +114,49 @@ struct SplitWrapper {
 };
 template<class Sample>
 struct SplitWrapperSplit {
-	signalsmith::linear::SplitFFT<Sample> fft;
+	signalsmith::linear::SplitFFT<Sample, true> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	void run(Data &data) {
+		auto time = data.split(0), freq = data.split(1), time2 = data.split(2);
+		fft.fft(time.real, time.imag, freq.real, freq.imag);
+		fft.ifft(freq.real, freq.imag, time2.real, time2.imag);
+	}
+	
+	template<class Data>
+	void normalise(Data &data) {
+		data.splitToComplex(1);
+		data.splitToComplex(2);
+	}
+};
+template<class Sample>
+struct UnSplitWrapper {
+	signalsmith::linear::SplitFFT<Sample, false> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	void run(Data& data) {
+		auto *time = data.complex(0), *freq = data.complex(1), *time2 = data.complex(2);
+		fft.fft(time, freq);
+		fft.ifft(freq, time2);
+	}
+
+	template<class Data>
+	void normalise(Data &data) {
+		data.complexToSplit(1);
+		data.complexToSplit(2);
+	}
+};
+template<class Sample>
+struct UnSplitWrapperSplit {
+	signalsmith::linear::SplitFFT<Sample, false> fft;
 
 	void prepare(size_t size, size_t) {
 		fft.resize(size);
@@ -197,20 +239,27 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 	
 	RunPlot plot("ffts", benchmarkSeconds);
 
-	auto simpleDouble = plot.runner<SimpleWrapper<double>>("Simple (double)");
-	auto simpleFloat = plot.runner<SimpleWrapper<float>>("Simple (float)");
-	auto simpleDoubleSplit = plot.runner<SimpleWrapperSplit<double>>("Simple (split double)");
-	auto simpleFloatSplit = plot.runner<SimpleWrapperSplit<float>>("Simple (split float)");
-	auto pow2Double = plot.runner<Pow2Wrapper<double>>("Pow2 (double)");
-	auto pow2Float = plot.runner<Pow2Wrapper<float>>("Pow2 (float)");
-	auto pow2DoubleSplit = plot.runner<Pow2WrapperSplit<double>>("Pow2 (split double)");
-	auto pow2FloatSplit = plot.runner<Pow2WrapperSplit<float>>("Pow2 (split float)");
-	auto splitDouble = plot.runner<SplitWrapper<double>>("Split (double)");
 	auto splitFloat = plot.runner<SplitWrapper<float>>("Split (float)");
-	auto splitDoubleSplit = plot.runner<SplitWrapperSplit<double>>("Split (split double)");
+	auto splitDouble = plot.runner<SplitWrapper<double>>("Split (double)");
 	auto splitFloatSplit = plot.runner<SplitWrapperSplit<float>>("Split (split float)");
-	auto dspDouble = plot.runner<SignalsmithDSPWrapper<double>>("DSP library (double)");
+	auto splitDoubleSplit = plot.runner<SplitWrapperSplit<double>>("Split (split double)");
+#ifdef INCLUDE_UNSPLIT_SPLITFFT
+	auto unsplitFloat = plot.runner<UnSplitWrapper<float>>("Un-Split (float)");
+	auto unsplitDouble = plot.runner<UnSplitWrapper<double>>("Un-Split (double)");
+	auto unsplitFloatSplit = plot.runner<UnSplitWrapperSplit<float>>("Un-Split (split float)");
+	auto unsplitDoubleSplit = plot.runner<UnSplitWrapperSplit<double>>("Un-Split (split double)");
+#endif
+	auto pow2Float = plot.runner<Pow2Wrapper<float>>("Pow2 (float)");
+	auto pow2Double = plot.runner<Pow2Wrapper<double>>("Pow2 (double)");
+	auto pow2FloatSplit = plot.runner<Pow2WrapperSplit<float>>("Pow2 (split float)");
+	auto pow2DoubleSplit = plot.runner<Pow2WrapperSplit<double>>("Pow2 (split double)");
+
+	auto simpleFloat = plot.runner<SimpleWrapper<float>>("Simple (float)");
+	auto simpleDouble = plot.runner<SimpleWrapper<double>>("Simple (double)");
+	auto simpleFloatSplit = plot.runner<SimpleWrapperSplit<float>>("Simple (split float)");
+	auto simpleDoubleSplit = plot.runner<SimpleWrapperSplit<double>>("Simple (split double)");
 	auto dspFloat = plot.runner<SignalsmithDSPWrapper<float>>("DSP library (float)");
+	auto dspDouble = plot.runner<SignalsmithDSPWrapper<double>>("DSP library (double)");
 
 	auto runSize = [&](int n, int pow3=0, int pow5=0, int pow7=0, bool alwaysRunSplit=false){
 		std::cout << "                n = " << n << "\r" << std::flush;
@@ -297,12 +346,22 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 			splitDoubleSplit.run(dataDouble, refTime, refPtrDouble);
 			std::cout << "split float (split)           \r";
 			splitFloatSplit.run(dataFloat, refTime, refPtrFloat);
+#ifdef INCLUDE_UNSPLIT_SPLITFFT
+			std::cout << "unsplit double           \r";
+			unsplitDouble.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "unsplit float           \r";
+			unsplitFloat.run(dataFloat, refTime, refPtrFloat);
+			std::cout << "unsplit double (split)           \r";
+			unsplitDoubleSplit.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "unsplit float (split)           \r";
+			unsplitFloatSplit.run(dataFloat, refTime, refPtrFloat);
+#endif
 		}
 	};
 
 	if (benchmarkSeconds == 0) {
-		// test the split FFT
-		for (int n = 1; n >= 256; --n) {
+		// test the split FFT for 1-64, but it's not expected to be fast so don't benchmark it
+		for (int n = 1; n < 64; ++n) {
 			runSize(n, -1, -1, -1, true);
 		}
 	}
@@ -330,7 +389,7 @@ template<typename Sample>
 struct SplitRunner {
 	using Complex = std::complex<Sample>;
 
-	signalsmith::linear::SplitFFT<Sample> fft;
+	signalsmith::linear::SplitFFT<Sample, true> fft;
 	
 	std::vector<Sample> timeR, timeI, freqR, freqI, time2R, time2I;
 	std::vector<Complex> time, freq, time2;
@@ -419,7 +478,7 @@ void testComplexFftSplits(size_t maxSize, double benchmarkSeconds) {
 
 	signalsmith::plot::Figure figure;
 	auto &floatPlot = figure(0, 0).plot(250, 200).title("float");
-	floatPlot.y.major(0).label("time").minor(1, "100%").minor(0.5, "50%").minor(1.5, "150%");
+	floatPlot.y.major(0).label("time").minor(1, "100%").minor(2, "200%");
 	floatPlot.x.blank();
 	auto &floatSplitPlot = figure(1, 0).plot(250, 200).title("float (split-complex)");
 	floatSplitPlot.x.copyFrom(floatPlot.x);

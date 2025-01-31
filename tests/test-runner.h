@@ -267,13 +267,13 @@ struct RunPlot {
 	Plot &plot;
 	signalsmith::plot::Legend &legend;
 	
-	RunPlot(const std::string &name, double benchmarkSeconds=0.05) : name(name), benchmarkSeconds(benchmarkSeconds), plotPtr(new Plot(450, 200)), plot(*plotPtr), legend(plot.legend(1.6, 1)) {
+	RunPlot(const std::string &name, double benchmarkSeconds=0.05) : name(name), benchmarkSeconds(benchmarkSeconds), plotPtr(new Plot(450, 200)), plot(*plotPtr), legend(plot.legend(2, 1)) {
 		std::cout << "\n" << name << "\n";
 		for (size_t i = 0; i < name.size(); ++i) std::cout << "-";
 		std::cout << "\n";
 		plot.x.label(name);
 	}
-	RunPlot(const std::string &name, Plot &plot, double benchmarkSeconds=0.05) : name(name), benchmarkSeconds(benchmarkSeconds), plot(plot), legend(plot.legend(1.6, 1)) {
+	RunPlot(const std::string &name, Plot &plot, double benchmarkSeconds=0.05) : name(name), benchmarkSeconds(benchmarkSeconds), plot(plot), legend(plot.legend(2, 1)) {
 		plot.x.label(name);
 	}
 	~RunPlot() {

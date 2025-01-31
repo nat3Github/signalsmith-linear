@@ -45,6 +45,54 @@ namespace _impl {
 		}
 	}
 
+	// Input: aStride elements next to each other -> output with bStride
+	template<size_t aStride, class V>
+	void interleaveCopy(const V *a, V *b, size_t bStride) {
+		for (size_t bi = 0; bi < bStride; ++bi) {
+			const V *offsetA = a + bi*aStride;
+			V *offsetB = b + bi;
+			for (size_t ai = 0; ai < aStride; ++ai) {
+				offsetB[ai*bStride] = offsetA[ai];
+			}
+		}
+	}
+	template<class V>
+	void interleaveCopy(const V *a, V *b, size_t aStride, size_t bStride) {
+		for (size_t bi = 0; bi < bStride; ++bi) {
+			const V *offsetA = a + bi*aStride;
+			V *offsetB = b + bi;
+			for (size_t ai = 0; ai < aStride; ++ai) {
+				offsetB[ai*bStride] = offsetA[ai];
+			}
+		}
+	}
+	template<size_t aStride, class V>
+	void interleaveCopy(const V *aReal, const V *aImag, V *bReal, V *bImag, size_t bStride) {
+		for (size_t bi = 0; bi < bStride; ++bi) {
+			const V *offsetAr = aReal + bi*aStride;
+			const V *offsetAi = aImag + bi*aStride;
+			V *offsetBr = bReal + bi;
+			V *offsetBi = bImag + bi;
+			for (size_t ai = 0; ai < aStride; ++ai) {
+				offsetBr[ai*bStride] = offsetAr[ai];
+				offsetBi[ai*bStride] = offsetAi[ai];
+			}
+		}
+	}
+	template<class V>
+	void interleaveCopy(const V *aReal, const V *aImag, V *bReal, V *bImag, size_t aStride, size_t bStride) {
+		for (size_t bi = 0; bi < bStride; ++bi) {
+			const V *offsetAr = aReal + bi*aStride;
+			const V *offsetAi = aImag + bi*aStride;
+			V *offsetBr = bReal + bi;
+			V *offsetBi = bImag + bi;
+			for (size_t ai = 0; ai < aStride; ++ai) {
+				offsetBr[ai*bStride] = offsetAr[ai];
+				offsetBi[ai*bStride] = offsetAi[ai];
+			}
+		}
+	}
+
 	template<class V>
 	void strideCopy(const std::complex<V> *a, size_t aStride, std::complex<V> *b, size_t size) {
 		for (size_t i = 0; i < size; ++i) {
@@ -254,52 +302,73 @@ struct SplitFFT {
 	void resize(size_t size) {
 		innerSize = 1;
 		outerSize = size;
+
+		dftTmp.resize(0);
+		dftTwists.resize(0);
+		plan.resize(0);
+		if (!size) return;
+		
 		// Inner size = largest power of 2 such that either the inner size >= minInnerSize, or we have the target number of splits
 		while (!(outerSize&1) && (outerSize > maxSplit || innerSize < minInnerSize)) {
 			innerSize *= 2;
 			outerSize /= 2;
 		}
-		tmpStride.resize(0);
-		tmpFreq.resize(innerSize);
+		tmpFreq.resize(size);
 		innerFFT.resize(innerSize);
 		
-		outerTwiddles.resize(innerSize*outerSize);
-		outerTwiddlesR.resize(innerSize*outerSize);
-		outerTwiddlesI.resize(innerSize*outerSize);
+		outerTwiddles.resize(innerSize*(outerSize - 1));
+		outerTwiddlesR.resize(innerSize*(outerSize - 1));
+		outerTwiddlesI.resize(innerSize*(outerSize - 1));
 		for (size_t i = 0; i < innerSize; ++i) {
-			for (size_t s = 0; s < outerSize; ++s) {
+			for (size_t s = 1; s < outerSize; ++s) {
 				Sample twiddlePhase = Sample(-2*M_PI*i/innerSize*s/outerSize);
-				outerTwiddles[i + s*innerSize] = std::polar(Sample(1), twiddlePhase);
+				outerTwiddles[i + (s - 1)*innerSize] = std::polar(Sample(1), twiddlePhase);
 			}
 		}
-		for (size_t i = 0; i < size; ++i) {
+		for (size_t i = 0; i < outerTwiddles.size(); ++i) {
 			outerTwiddlesR[i] = outerTwiddles[i].real();
 			outerTwiddlesI[i] = outerTwiddles[i].imag();
 		}
 
-		dftTwists.resize(outerSize);
-		for (size_t s = 0; s < outerSize; ++s) {
-			Sample dftPhase = Sample(-2*M_PI*s/outerSize);
-			dftTwists[s] = std::polar(Sample(1), dftPhase);
-		}
 
-		StepType finalStep = (StepType)0; // invalid final step
-		if (outerSize == 2) finalStep = StepType::finalOrder2;
-		if (outerSize == 3) finalStep = StepType::finalOrder3;
-		if (outerSize == 4) finalStep = StepType::finalOrder4;
-		if (outerSize == 5) finalStep = StepType::finalOrder5;
+		StepType interleaveStep = StepType::interleaveOrderN;
+		StepType finalStep = StepType::finalOrderN;
+		if (outerSize == 2) {
+			interleaveStep = StepType::interleaveOrder2;
+			finalStep = StepType::finalOrder2;
+		}
+		if (outerSize == 3) {
+			interleaveStep = StepType::interleaveOrder3;
+			finalStep = StepType::finalOrder3;
+		}
+		if (outerSize == 4) {
+			interleaveStep = StepType::interleaveOrder4;
+			finalStep = StepType::finalOrder4;
+		}
+		if (outerSize == 5) {
+			interleaveStep = StepType::interleaveOrder5;
+			finalStep = StepType::finalOrder5;
+		}
 		
 		if (outerSize <= 1) {
-			stepTypes.clear();
-			if (size > 0) stepTypes.push_back(StepType::firstWithFinal); // This just calls innerFFT
-		} else if (finalStep == (StepType)0) {
-			stepTypes.assign(outerSize, StepType::middleWithoutFinal);
-			stepTypes[0] = StepType::firstWithoutFinal;
-			tmpStride.resize(innerSize); // We need more temporary data in this case
+			if (size > 0) plan.push_back(Step{StepType::passthrough, 0});
 		} else {
-			stepTypes.assign(outerSize, StepType::middleWithFinal);
-			stepTypes[0] = StepType::firstWithFinal;
-			stepTypes.push_back(finalStep);
+			plan.push_back({interleaveStep, 0});
+			plan.push_back({StepType::firstFFT, 0});
+			for (size_t s = 1; s < outerSize; ++s) {
+				plan.push_back({StepType::middleFFT, s*innerSize});
+			}
+			plan.push_back({StepType::twiddles, 0});
+			plan.push_back({finalStep, 0});
+
+			if (finalStep == StepType::finalOrderN) {
+				dftTmp.resize(outerSize);
+				dftTwists.resize(outerSize);
+				for (size_t s = 0; s < outerSize; ++s) {
+					Sample dftPhase = Sample(-2*M_PI*s/outerSize);
+					dftTwists[s] = std::polar(Sample(1), dftPhase);
+				}
+			}
 		}
 	}
 	
@@ -307,132 +376,118 @@ struct SplitFFT {
 		return innerSize*outerSize;
 	}
 	size_t steps() const {
-		return stepTypes.size();
+		return plan.size();
 	}
 	
 	void fft(const Complex *time, Complex *freq) {
-		for (size_t s = 0; s < stepTypes.size(); ++s) {
-			fftStep<false>(s, time, freq);
+		for (auto &step : plan) {
+			fftStep<false>(step, time, freq);
 		}
 	}
 	void fft(size_t step, const Complex *time, Complex *freq) {
-		fftStep<false>(step, time, freq);
+		fftStep<false>(plan[step], time, freq);
 	}
 	void fft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
-		for (size_t s = 0; s < stepTypes.size(); ++s) {
-			fftStep<false>(s, inR, inI, outR, outI);
+		for (auto &step : plan) {
+			fftStep<false>(step, inR, inI, outR, outI);
 		}
 	}
 	void fft(size_t step, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
-		fftStep<false>(step, inR, inI, outR, outI);
+		fftStep<false>(plan[step], inR, inI, outR, outI);
 	}
+	
 	void ifft(const Complex *freq, Complex *time) {
-		for (size_t s = 0; s < stepTypes.size(); ++s) {
-			fftStep<true>(s, freq, time);
+		for (auto &step : plan) {
+			fftStep<true>(step, freq, time);
 		}
 	}
 	void ifft(size_t step, const Complex *freq, Complex *time) {
-		fftStep<true>(step, freq, time);
+		fftStep<true>(plan[step], freq, time);
 	}
 	void ifft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
-		for (size_t s = 0; s < stepTypes.size(); ++s) {
-			fftStep<true>(s, inR, inI, outR, outI);
+		for (auto &step : plan) {
+			fftStep<true>(step, inR, inI, outR, outI);
 		}
 	}
 	void ifft(size_t step, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
-		fftStep<true>(step, inR, inI, outR, outI);
+		fftStep<true>(plan[step], inR, inI, outR, outI);
 	}
 private:
 	using InnerFFT = Pow2FFT<Sample>;
 	InnerFFT innerFFT;
 
 	size_t innerSize, outerSize;
-	std::vector<Complex> tmpFreq, tmpStride;
+	std::vector<Complex> tmpFreq;
 	std::vector<Complex> outerTwiddles;
 	std::vector<Sample> outerTwiddlesR, outerTwiddlesI;
-	std::vector<Complex> dftTwists;
+	std::vector<Complex> dftTwists, dftTmp;
 
-	enum class StepType{firstWithFinal, firstWithoutFinal, middleWithFinal, middleWithoutFinal, finalOrder2, finalOrder3, finalOrder4, finalOrder5};
-	std::vector<StepType> stepTypes;
+	enum class StepType {
+		passthrough,
+		interleaveOrder2, interleaveOrder3, interleaveOrder4, interleaveOrder5, interleaveOrderN,
+		firstFFT, middleFFT,
+		twiddles,
+		finalOrder2, finalOrder3, finalOrder4, finalOrder5, finalOrderN
+	};
+	struct Step {
+		StepType type;
+		size_t offset;
+	};
+	std::vector<Step> plan;
 	
 	template<bool inverse>
-	void fftStep(size_t s, const Complex *time, Complex *freq) {
-		switch (stepTypes[s]) {
-			case (StepType::firstWithFinal): {
-				if (outerSize == 1) {
-					if (inverse) {
-						innerFFT.ifft(time, freq);
-					} else {
-						innerFFT.fft(time, freq);
-					}
+	void fftStep(Step step, const Complex *time, Complex *freq) {
+		switch (step.type) {
+			case (StepType::passthrough): {
+				if (inverse) {
+					innerFFT.ifft(time, freq);
 				} else {
-					_impl::strideCopy(time, outerSize, tmpFreq.data(), innerSize);
-					if (inverse) {
-						innerFFT.ifft(tmpFreq.data(), freq);
-					} else {
-						innerFFT.fft(tmpFreq.data(), freq);
-					}
+					innerFFT.fft(time, freq);
 				}
 				break;
 			}
-			case (StepType::firstWithoutFinal): {
-				_impl::strideCopy(time, outerSize, tmpFreq.data(), innerSize);
+			case (StepType::interleaveOrder2): {
+				_impl::interleaveCopy<2>(time, tmpFreq.data(), innerSize);
+				break;
+			}
+			case (StepType::interleaveOrder3): {
+				_impl::interleaveCopy<3>(time, tmpFreq.data(), innerSize);
+				break;
+			}
+			case (StepType::interleaveOrder4): {
+				_impl::interleaveCopy<4>(time, tmpFreq.data(), innerSize);
+				break;
+			}
+			case (StepType::interleaveOrder5): {
+				_impl::interleaveCopy<5>(time, tmpFreq.data(), innerSize);
+				break;
+			}
+			case (StepType::interleaveOrderN): {
+				_impl::interleaveCopy(time, tmpFreq.data(), outerSize, innerSize);
+				break;
+			}
+			case (StepType::firstFFT): {
 				if (inverse) {
 					innerFFT.ifft(tmpFreq.data(), freq);
 				} else {
 					innerFFT.fft(tmpFreq.data(), freq);
 				}
-				// We're doing the DFT as part of these passes, so duplicate this one
-				for (size_t s = 1; s < outerSize; ++s) {
-					auto *offsetFreq = freq + s*innerSize;
-					for (size_t i = 0; i < innerSize; ++i) {
-						offsetFreq[i] = freq[i];
-					}
+				break;
+			}
+			case (StepType::middleFFT): {
+				Complex *offsetOut = freq + step.offset;
+				if (inverse) {
+					innerFFT.ifft(tmpFreq.data() + step.offset, offsetOut);
+				} else {
+					innerFFT.fft(tmpFreq.data() + step.offset, offsetOut);
 				}
 				break;
 			}
-			case (StepType::middleWithFinal): {
-				const Complex *offsetTime = time + s;
-				Complex *offsetOut = freq + s*innerSize;
-				
-				_impl::strideCopy(offsetTime, outerSize, tmpFreq.data(), innerSize);
+			case (StepType::twiddles): {
 				if (inverse) {
-					innerFFT.ifft(tmpFreq.data(), offsetOut);
+					_impl::complexMulConj(freq + innerSize, freq + innerSize, outerTwiddles.data(), innerSize*(outerSize - 1));
 				} else {
-					innerFFT.fft(tmpFreq.data(), offsetOut);
-				}
-				
-				auto *twiddles = outerTwiddles.data() + s*innerSize;
-				// We'll do the final DFT in-place, as extra passes
-				if (inverse) {
-					_impl::complexMulConj(offsetOut, offsetOut, twiddles, innerSize);
-				} else {
-					_impl::complexMul(offsetOut, offsetOut, twiddles, innerSize);
-				}
-				break;
-			}
-			case (StepType::middleWithoutFinal): {
-				const Complex *offsetTime = time + s;
-				_impl::strideCopy(offsetTime, outerSize, tmpStride.data(), innerSize);
-				if (inverse) {
-					innerFFT.ifft(tmpStride.data(), tmpFreq.data());
-				} else {
-					innerFFT.fft(tmpStride.data(), tmpFreq.data());
-				}
-				
-				auto *twiddles = outerTwiddles.data() + s*innerSize;
-				// We have to do the final DFT right here
-				for (size_t i = 0; i < innerSize; ++i) {
-					Complex v = tmpFreq[i]*(inverse ? std::conj(twiddles[i]) : twiddles[i]);
-					tmpFreq[i] = v;
-					freq[i] += v;
-				}
-
-				for (size_t f = 1; f < outerSize; ++f) {
-					Complex dftTwist = dftTwists[(f*s)%outerSize];
-					for (size_t i = 0; i < innerSize; ++i) {
-						freq[i + f*innerSize] += tmpFreq[i]*(inverse ? std::conj(dftTwist) : dftTwist);
-					}
+					_impl::complexMul(freq + innerSize, freq + innerSize, outerTwiddles.data(), innerSize*(outerSize - 1));
 				}
 				break;
 			}
@@ -448,98 +503,73 @@ private:
 			case StepType::finalOrder5:
 				finalPass5<inverse>(freq);
 				break;
+			case StepType::finalOrderN:
+				finalPassN<inverse>(freq);
+				break;
 		}
 	}
 	template<bool inverse>
-	void fftStep(size_t s, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+	void fftStep(Step step, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
 		Sample *tmpR = (Sample *)tmpFreq.data(), *tmpI = tmpR + tmpFreq.size();
-		switch (stepTypes[s]) {
-			case (StepType::firstWithFinal): {
-				if (outerSize == 1) {
-					if (inverse) {
-						innerFFT.ifft(inR, inI, outR, outI);
-					} else {
-						innerFFT.fft(inR, inI, outR, outI);
-					}
+		switch (step.type) {
+			case (StepType::passthrough): {
+				if (inverse) {
+					innerFFT.ifft(inR, inI, outR, outI);
 				} else {
-					_impl::strideCopy(inR, inI, outerSize, tmpR, tmpI, innerSize);
-					if (inverse) {
-						innerFFT.ifft(tmpR, tmpI, outR, outI);
-					} else {
-						innerFFT.fft(tmpR, tmpI, outR, outI);
-					}
+					innerFFT.fft(inR, inI, outR, outI);
 				}
 				break;
 			}
-			case (StepType::firstWithoutFinal): {
-				_impl::strideCopy(inR, inI, outerSize, tmpR, tmpI, innerSize);
+			case (StepType::interleaveOrder2): {
+				_impl::interleaveCopy<2>(inR, tmpR, innerSize);
+				_impl::interleaveCopy<2>(inI, tmpI, innerSize);
+				break;
+			}
+			case (StepType::interleaveOrder3): {
+				_impl::interleaveCopy<3>(inR, tmpR, innerSize);
+				_impl::interleaveCopy<3>(inI, tmpI, innerSize);
+				break;
+			}
+			case (StepType::interleaveOrder4): {
+				_impl::interleaveCopy<4>(inR, tmpR, innerSize);
+				_impl::interleaveCopy<4>(inI, tmpI, innerSize);
+				break;
+			}
+			case (StepType::interleaveOrder5): {
+				_impl::interleaveCopy<5>(inR, tmpR, innerSize);
+				_impl::interleaveCopy<5>(inI, tmpI, innerSize);
+				break;
+			}
+			case (StepType::interleaveOrderN): {
+				_impl::interleaveCopy(inR, inI, tmpR, tmpI, outerSize, innerSize);
+				break;
+			}
+			case (StepType::firstFFT): {
 				if (inverse) {
 					innerFFT.ifft(tmpR, tmpI, outR, outI);
 				} else {
 					innerFFT.fft(tmpR, tmpI, outR, outI);
 				}
-				// We're doing the DFT as part of these passes, so duplicate this one
-				for (size_t s = 1; s < outerSize; ++s) {
-					auto *offsetR = outR + s*innerSize;
-					auto *offsetI = outI + s*innerSize;
-					for (size_t i = 0; i < innerSize; ++i) {
-						offsetR[i] = outR[i];
-						offsetI[i] = outI[i];
-					}
+				break;
+			}
+			case (StepType::middleFFT): {
+				size_t offset = step.offset;
+				Sample *offsetOutR = outR + offset;
+				Sample *offsetOutI = outI + offset;
+				if (inverse) {
+					innerFFT.ifft(tmpR + offset, tmpI + offset, offsetOutR, offsetOutI);
+				} else {
+					innerFFT.fft(tmpR + offset, tmpI + offset, offsetOutR, offsetOutI);
 				}
 				break;
 			}
-			case (StepType::middleWithFinal): {
-				const Sample *offsetR = inR + s;
-				const Sample *offsetI = inI + s;
-				Sample *offsetOutR = outR + s*innerSize;
-				Sample *offsetOutI = outI + s*innerSize;
-				_impl::strideCopy(offsetR, offsetI, outerSize, offsetOutR, offsetOutI, innerSize);
+			case(StepType::twiddles): {
+				auto *twiddlesR = outerTwiddlesR.data();
+				auto *twiddlesI = outerTwiddlesI.data();
 				if (inverse) {
-					innerFFT.ifft(offsetOutR, offsetOutI, tmpR, tmpI);
+					_impl::complexMulConj(outR + innerSize, outI + innerSize, outR + innerSize, outI + innerSize, twiddlesR, twiddlesI, innerSize*(outerSize - 1));
 				} else {
-					innerFFT.fft(offsetOutR, offsetOutI, tmpR, tmpI);
-				}
-				
-				auto *twiddlesR = outerTwiddlesR.data() + s*innerSize;
-				auto *twiddlesI = outerTwiddlesI.data() + s*innerSize;
-				// We'll do the final DFT in-place, as extra passes
-				if (inverse) {
-					_impl::complexMulConj(offsetOutR, offsetOutI, tmpR, tmpI, twiddlesR, twiddlesI, innerSize);
-				} else {
-					_impl::complexMul(offsetOutR, offsetOutI, tmpR, tmpI, twiddlesR, twiddlesI, innerSize);
-				}
-				break;
-			}
-			case (StepType::middleWithoutFinal): {
-				const Sample *offsetR = inR + s;
-				const Sample *offsetI = inI + s;
-				Sample *tmpStrideR = (Sample *)tmpStride.data();
-				Sample *tmpStrideI = tmpStrideR + innerSize;
-				_impl::strideCopy(offsetR, offsetI, outerSize, tmpStrideR, tmpStrideI, innerSize);
-				if (inverse) {
-					innerFFT.ifft(tmpStrideR, tmpStrideI, tmpR, tmpI);
-				} else {
-					innerFFT.fft(tmpStrideR, tmpStrideI, tmpR, tmpI);
-				}
-
-				auto *twiddlesR = outerTwiddlesR.data() + s*innerSize;
-				auto *twiddlesI = outerTwiddlesI.data() + s*innerSize;
-				// We have to do the final DFT right here
-				for (size_t i = 0; i < innerSize; ++i) {
-					Complex v = Complex{tmpR[i], tmpI[i]}*Complex{twiddlesR[i], inverse ? -twiddlesI[i] : twiddlesI[i]};
-					tmpR[i] = v.real();
-					tmpI[i] = v.imag();
-					outR[i] += v.real();
-					outI[i] += v.imag();
-				}
-				for (size_t f = 1; f < outerSize; ++f) {
-					Complex dftTwist = dftTwists[(f*s)%outerSize];
-					for (size_t i = 0; i < innerSize; ++i) {
-						Complex v = Complex{tmpR[i], tmpI[i]}*(inverse ? std::conj(dftTwist) : dftTwist);
-						outR[i + f*innerSize] += v.real();
-						outI[i + f*innerSize] += v.imag();
-					}
+					_impl::complexMul(outR + innerSize, outI + innerSize, outR + innerSize, outI + innerSize, twiddlesR, twiddlesI, innerSize*(outerSize - 1));
 				}
 				break;
 			}
@@ -554,6 +584,9 @@ private:
 				break;
 			case StepType::finalOrder5:
 				finalPass5<inverse>(outR, outI);
+				break;
+			case StepType::finalOrderN:
+				finalPassN<inverse>(outR, outI);
 				break;
 		}
 	}
@@ -699,20 +732,82 @@ private:
 			Sample ar = f0r[i], ai = f0i[i], br = f1r[i], bi = f1i[i], cr = f2r[i], ci = f2i[i], dr = f3r[i], di = f3i[i], er = f4r[i], ei = f4i[i];
 
 			Sample be0r = br + er, be0i = bi + ei;
-			Sample be1r = br - er, be1i = ei - bi;
+			Sample be1r = ei - bi, be1i = br - er;
 			Sample cd0r = cr + dr, cd0i = ci + di;
-			Sample cd1r = cr - dr, cd1i = di - ci;
+			Sample cd1r = di - ci, cd1i = cr - dr;
+
+			Sample bcde01r = be0r*tw1r + cd0r*tw2r, bcde01i = be0i*tw1r + cd0i*tw2r;
+			Sample bcde02r = be0r*tw2r + cd0r*tw1r, bcde02i = be0i*tw2r + cd0i*tw1r;
+			Sample bcde11r = be1r*tw1i + cd1r*tw2i, bcde11i = be1i*tw1i + cd1i*tw2i;
+			Sample bcde12r = be1r*tw2i - cd1r*tw1i, bcde12i = be1i*tw2i - cd1i*tw1i;
 
 			f0r[i] = ar + be0r + cd0r;
 			f0i[i] = ai + be0i + cd0i;
-			f1r[i] = ar + be0r*tw1r + be1i*tw1i + cd0r*tw2r + cd1i*tw2i;
-			f1i[i] = ai + be0i*tw1r + be1r*tw1i + cd0i*tw2r + cd1r*tw2i;
-			f2r[i] = ar + be0r*tw2r + be1i*tw2i + cd0r*tw1r - cd1i*tw1i;
-			f2i[i] = ai + be0i*tw2r + be1r*tw2i + cd0i*tw1r - cd1r*tw1i;
-			f3r[i] = ar + be0r*tw2r - be1i*tw2i + cd0r*tw1r + cd1i*tw1i;
-			f3i[i] = ai + be0i*tw2r - be1r*tw2i + cd0i*tw1r + cd1r*tw1i;
-			f4r[i] = ar + be0r*tw1r - be1i*tw1i + cd0r*tw2r - cd1i*tw2i;
-			f4i[i] = ai + be0i*tw1r - be1r*tw1i + cd0i*tw2r - cd1r*tw2i;
+			f1r[i] = ar + bcde01r + bcde11r;
+			f1i[i] = ai + bcde01i + bcde11i;
+			f2r[i] = ar + bcde02r + bcde12r;
+			f2i[i] = ai + bcde02i + bcde12i;
+			f3r[i] = ar + bcde02r - bcde12r;
+			f3i[i] = ai + bcde02i - bcde12i;
+			f4r[i] = ar + bcde01r - bcde11r;
+			f4i[i] = ai + bcde01i - bcde11i;
+		}
+	}
+
+	template<bool inverse>
+	void finalPassN(Complex *f0) {
+		for (size_t i = 0; i < innerSize; ++i) {
+			Complex *offsetFreq = f0 + i;
+			Complex sum = 0;
+			for (size_t i2 = 0; i2 < outerSize; ++i2) {
+				sum += (dftTmp[i2] = offsetFreq[i2*innerSize]);
+			}
+			offsetFreq[0] = sum;
+			
+			for (size_t f = 1; f < outerSize; ++f) {
+				Complex sum = dftTmp[0];
+
+				for (size_t i2 = 1; i2 < outerSize; ++i2) {
+					size_t twistIndex = (i2*f)%outerSize;
+					Complex twist = inverse ? std::conj(dftTwists[twistIndex]) : dftTwists[twistIndex];
+					sum += Complex{
+						dftTmp[i2].real()*twist.real() - dftTmp[i2].imag()*twist.imag(),
+						dftTmp[i2].imag()*twist.real() + dftTmp[i2].real()*twist.imag()
+					};
+				}
+
+				offsetFreq[f*innerSize] = sum;
+			}
+		}
+	}
+	template<bool inverse>
+	void finalPassN(Sample *f0r, Sample *f0i) {
+		Sample *tmpR = (Sample *)dftTmp.data(), *tmpI = tmpR + outerSize;
+		
+		for (size_t i = 0; i < innerSize; ++i) {
+			Sample *offsetR = f0r + i;
+			Sample *offsetI = f0i + i;
+			Sample sumR = 0, sumI = 0;
+			for (size_t i2 = 0; i2 < outerSize; ++i2) {
+				sumR += (tmpR[i2] = offsetR[i2*innerSize]);
+				sumI += (tmpI[i2] = offsetI[i2*innerSize]);
+			}
+			offsetR[0] = sumR;
+			offsetI[0] = sumI;
+			
+			for (size_t f = 1; f < outerSize; ++f) {
+				Sample sumR = *tmpR, sumI = *tmpI;
+
+				for (size_t i2 = 1; i2 < outerSize; ++i2) {
+					size_t twistIndex = (i2*f)%outerSize;
+					Complex twist = inverse ? std::conj(dftTwists[twistIndex]) : dftTwists[twistIndex];
+					sumR += tmpR[i2]*twist.real() - tmpI[i2]*twist.imag();
+					sumI += tmpI[i2]*twist.real() + tmpR[i2]*twist.imag();
+				}
+
+				offsetR[f*innerSize] = sumR;
+				offsetI[f*innerSize] = sumI;
+			}
 		}
 	}
 };

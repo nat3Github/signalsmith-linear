@@ -8,7 +8,7 @@ include(FetchContent)
 FetchContent_Declare(
 	signalsmith_dsp
 	GIT_REPOSITORY https://github.com/Signalsmith-Audio/dsp.git
-	GIT_TAG main
+	GIT_TAG 5c7d1f3eb375b4862b682d310ccfbaafb6a4477e # main
 	GIT_SHALLOW ON
 	SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/others/dsp"
 )
@@ -18,7 +18,7 @@ FetchContent_MakeAvailable(signalsmith_dsp)
 FetchContent_Declare(
 	signalsmith_plot
 	GIT_REPOSITORY https://github.com/Signalsmith-Audio/plot.git
-	GIT_TAG main
+	GIT_TAG 8318ec05f5d497cc18432604a6a9c68565cfe727 # main
 	GIT_SHALLOW ON
 	SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/plot"
 )
