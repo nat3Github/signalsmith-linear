@@ -524,9 +524,67 @@ void testComplexFftSplits(size_t maxSize, double benchmarkSeconds) {
 	figure.write("fft-splits.svg");
 }
 
+template<class Sample>
+void testRealFft(int size) {
+	signalsmith::linear::FFT<Sample> complexFft(size);
+	signalsmith::linear::RealFFT<Sample> realFft(size);
+	
+	RunData<Sample> data(size);
+	auto *realTime = data.real(0);
+	auto *realFreqC = data.complex(0);
+	auto realFreqS = data.split(0);
+	auto *realTime2C = data.real(1);
+	auto realTime2S = data.real(2);
+	
+	auto *complexTime = data.complex(1);
+	auto *complexFreq = data.complex(2);
+	auto *complexTime2 = data.complex(3);
+	
+	for (int i = 0; i < size; ++i) {
+		complexTime[i] = realTime[i];
+		realFreqC[i] += 200;
+		realFreqS.real[i] += 300;
+		realFreqS.imag[i] += 400;
+	}
+
+	// Interleaved complex input
+	realFft.fft(realTime, realFreqC);
+	realFft.ifft(realFreqC, realTime2C);
+	// Split-complex input
+	realFft.fft(realTime, realFreqS.real, realFreqS.imag);
+	realFft.ifft(realFreqS.real, realFreqS.imag, realTime2S);
+	
+	complexFft.fft(complexTime, complexFreq);
+	complexFft.ifft(complexFreq, complexTime2);
+	complexFreq[0].imag(complexFreq[size/2].real()); // Nyquist packing
+
+	double error = 0;
+	for (int i = 0; i < size/2; ++i) {
+		error += std::norm(complexFreq[i] - realFreqC[i]);
+		error += std::norm(complexFreq[i] - realFreqS[i]);
+	}
+	
+	if (error >= size*0.001) {
+		LOG_EXPR(size);
+		LOG_EXPR(error);
+		data.log();
+		abort();
+	}
+}
+
+void testRealFfts(int, double) {
+	std::cout << "Real FFTs\n---------\n";
+	for (int size = 2; size < 128; size += 2) {
+		testRealFft<float>(size);
+		testRealFft<double>(size);
+	}
+}
+
 void testFfts(int maxSize, double benchmarkSeconds) {
 	testComplexFfts(maxSize, benchmarkSeconds);
 	if (benchmarkSeconds > 0) {
 		testComplexFftSplits(maxSize, benchmarkSeconds);
 	}
+	
+	testRealFfts(maxSize, benchmarkSeconds);
 }

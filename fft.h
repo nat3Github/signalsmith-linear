@@ -812,6 +812,123 @@ private:
 	}
 };
 
+template<typename Sample, bool splitComputation=false>
+using FFT = SplitFFT<Sample, splitComputation>;
+
+template<typename Sample, bool splitComputation=false>
+struct RealFFT {
+	using Complex = std::complex<Sample>;
+
+	static size_t fastSizeAbove(size_t size) {
+		return ComplexFFT::fastSizeAbove((size + 1)/2)*2;
+	}
+	
+	RealFFT(size_t size=0) {
+		resize(size);
+	}
+	
+	void resize(size_t size) {
+		size += (size&1);
+
+		complexFft.resize(size);
+
+		tmpTime.resize(size);
+		tmpFreqR.resize(size);
+		tmpFreqI.resize(size);
+	}
+	
+	size_t size() const {
+		return complexFft.size();
+	}
+	size_t steps() const {
+		return complexFft.steps();
+	}
+	
+	void fft(const Sample *time, Complex *freq) {
+		for (size_t s = 0; s < steps(); ++s) {
+			fft(s, time, freq);
+		}
+	}
+	void fft(size_t step, const Sample *time, Complex *freq) {
+		if (step == 0) {
+			for (auto &v : tmpTime) v = 0;
+		}
+		complexFft.fft(step, time, tmpTime.data(), tmpFreqR.data(), tmpFreqI.data());
+		if (step + 1 == complexFft.steps()) {
+			for (size_t i = 0; i < size()/2; ++i) {
+				freq[i] = {tmpFreqR[i], tmpFreqI[i]};
+			}
+			freq[0].imag(tmpFreqR[size()/2]); // Pack Nyquist into bin 0
+		}
+	}
+	void fft(const Sample *inR, Sample *outR, Sample *outI) {
+		for (size_t s = 0; s < steps(); ++s) {
+			fft(s, inR, outR, outI);
+		}
+	}
+	void fft(size_t step, const Sample *inR, Sample *outR, Sample *outI) {
+		if (step == 0) {
+			for (auto &v : tmpTime) v = 0;
+		}
+		complexFft.fft(step, inR, tmpTime.data(), tmpFreqR.data(), tmpFreqI.data());
+		if (step + 1 == complexFft.steps()) {
+			for (size_t i = 0; i < size()/2; ++i) {
+				outR[i] = tmpFreqR[i];
+				outI[i] = tmpFreqI[i];
+			}
+			outI[0] = tmpFreqR[size()/2]; // pack Nyquist into bin 0
+		}
+	}
+	
+	void ifft(const Complex *freq, Sample *time) {
+		for (size_t s = 0; s < steps(); ++s) {
+			ifft(s, freq, time);
+		}
+	}
+	void ifft(size_t step, const Complex *freq, Sample *time) {
+		if (step == 0) {
+			tmpFreqR[0] = freq[0].real();
+			tmpFreqI[0] = 0;
+			tmpFreqR[size()/2] = freq[0].imag(); // unpack Nyquist
+			tmpFreqI[size()/2] = 0;
+			for (size_t i = 1; i < size()/2 - 1; ++i) {
+				size_t i2 = size() - i;
+				tmpFreqR[i] = freq[i].real();
+				tmpFreqI[i] = freq[i].imag();
+				tmpFreqR[i2] = freq[i].real();
+				tmpFreqI[i2] = -freq[i].imag();
+			}
+		}
+		complexFft.ifft(step, tmpFreqR.data(), tmpFreqI.data(), time, tmpTime.data());
+	}
+	void ifft(const Sample *inR, const Sample *inI, Sample *outR) {
+		for (size_t s = 0; s < steps(); ++s) {
+			ifft(s, inR, inI, outR);
+		}
+	}
+	void ifft(size_t step, const Sample *inR, const Sample *inI, Sample *outR) {
+		if (step == 0) {
+			tmpFreqR[0] = inR[0];
+			tmpFreqI[0] = 0;
+			tmpFreqR[size()/2] = inI[0]; // unpack Nyquist
+			tmpFreqI[size()/2] = 0;
+			for (size_t i = 1; i < size()/2 - 1; ++i) {
+				size_t i2 = size() - i;
+				tmpFreqR[i] = inR[i];
+				tmpFreqI[i] = inI[i];
+				tmpFreqR[i2] = inR[i];
+				tmpFreqI[i2] = -inI[i];
+			}
+		}
+		complexFft.ifft(step, tmpFreqR.data(), tmpFreqI.data(), outR, tmpTime.data());
+	}
+private:
+	std::vector<Sample> tmpTime, tmpFreqR, tmpFreqI;
+
+	using ComplexFFT = SplitFFT<Sample, splitComputation>;
+	ComplexFFT complexFft;
+};
+
 }} // namespace
 
 // Platform-specific
