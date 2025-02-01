@@ -891,7 +891,7 @@ struct RealFFT {
 			tmpFreqI[0] = 0;
 			tmpFreqR[size()/2] = freq[0].imag(); // unpack Nyquist
 			tmpFreqI[size()/2] = 0;
-			for (size_t i = 1; i < size()/2 - 1; ++i) {
+			for (size_t i = 1; i < size()/2; ++i) {
 				size_t i2 = size() - i;
 				tmpFreqR[i] = freq[i].real();
 				tmpFreqI[i] = freq[i].imag();
@@ -912,7 +912,7 @@ struct RealFFT {
 			tmpFreqI[0] = 0;
 			tmpFreqR[size()/2] = inI[0]; // unpack Nyquist
 			tmpFreqI[size()/2] = 0;
-			for (size_t i = 1; i < size()/2 - 1; ++i) {
+			for (size_t i = 1; i < size()/2; ++i) {
 				size_t i2 = size() - i;
 				tmpFreqR[i] = inR[i];
 				tmpFreqI[i] = inI[i];

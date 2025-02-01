@@ -3,6 +3,7 @@
 
 #include "./test-linear.h"
 #include "./test-ffts.h"
+#include "./test-stfts.h"
 
 #include <cstdlib>
 
@@ -44,11 +45,14 @@ int main(int argc, char *argv[]) {
 	}
 	if (argc <= 3) {
 		testFfts(maxSize, benchmarkSeconds);
+		testStfts(maxSize, benchmarkSeconds);
 		testLinear(maxSize, benchmarkSeconds);
 	} else {
 		for (int i = 3; i < argc; ++i) {
 			if (!std::strcmp(argv[i], "fft")) {
 				testFfts(maxSize, benchmarkSeconds);
+			} else if (!std::strcmp(argv[i], "stft")) {
+				testStfts(maxSize, benchmarkSeconds);
 			} else if (!std::strcmp(argv[i], "linear")) {
 				testLinear(maxSize, benchmarkSeconds);
 			}
