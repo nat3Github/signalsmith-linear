@@ -301,7 +301,7 @@ struct Expression : public BaseExpr {
 	const Expression<expression::Sqrt<BaseExpr>> sqrt() const {
 		return {*this};
 	}
-	const Expression<expression::Sqrt<BaseExpr>> cbrt() const {
+	const Expression<expression::Cbrt<BaseExpr>> cbrt() const {
 		return {*this};
 	}
 	const Expression<expression::Conj<BaseExpr>> conj() const {
