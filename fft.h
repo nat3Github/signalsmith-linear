@@ -120,11 +120,8 @@ struct SimpleFFT {
 	void resize(size_t maxSize) {
 		twiddles.resize(maxSize/2);
 		for (size_t i = 0; i < maxSize/2; ++i) {
-			double twiddlePhase = -2*M_PI*i/maxSize;
-			twiddles[i] = {
-				Sample(std::cos(twiddlePhase)),
-				Sample(std::sin(twiddlePhase))
-			};
+			Sample twiddlePhase = -2*M_PI*i/maxSize;
+			twiddles[i] = std::polar(Sample(1), twiddlePhase);
 		}
 		working.resize(maxSize);
 	}
@@ -828,20 +825,22 @@ struct RealFFT {
 	}
 	
 	void resize(size_t size) {
-		size += (size&1);
-
-		complexFft.resize(size);
-
-		tmpTime.resize(size);
-		tmpFreqR.resize(size);
-		tmpFreqI.resize(size);
+		complexFft.resize(size/2);
+		tmp.resize(size/2);
+		tmpTime.resize(size/2);
+		
+		twiddles.resize(size/4 + 1);
+		for (size_t i = 0; i < twiddles.size(); ++i) {
+			Sample rotPhase = i*(-2*M_PI/size) - M_PI/2; // bake rotation by (-i) into twiddles
+			twiddles[i] = std::polar(Sample(1), rotPhase);
+		}
 	}
 	
 	size_t size() const {
-		return complexFft.size();
+		return complexFft.size()*2;
 	}
 	size_t steps() const {
-		return complexFft.steps();
+		return complexFft.steps() + 1;
 	}
 	
 	void fft(const Sample *time, Complex *freq) {
@@ -850,15 +849,32 @@ struct RealFFT {
 		}
 	}
 	void fft(size_t step, const Sample *time, Complex *freq) {
-		if (step == 0) {
-			for (auto &v : tmpTime) v = 0;
-		}
-		complexFft.fft(step, time, tmpTime.data(), tmpFreqR.data(), tmpFreqI.data());
-		if (step + 1 == complexFft.steps()) {
-			for (size_t i = 0; i < size()/2; ++i) {
-				freq[i] = {tmpFreqR[i], tmpFreqI[i]};
+		if (step < complexFft.steps()) {
+			complexFft.fft(step, (const Complex *)time, freq);
+		} else {
+			size_t hSize = complexFft.size(), qSize = hSize/2;
+
+			Complex bin0 = freq[0];
+			freq[0] = { // pack DC & Nyquist together
+				bin0.real() + bin0.imag(),
+				bin0.real() - bin0.imag()
+			};
+			
+			for (size_t i = 1; i <= qSize; ++i) {
+				size_t conjI = (hSize - i);
+				Complex twiddle = twiddles[i];
+
+				Complex odd = (freq[i] + std::conj(freq[conjI]))*Sample(0.5);
+				Complex evenI = (freq[i] - std::conj(freq[conjI]))*Sample(0.5);
+				Complex evenRotMinusI = { // twiddle includes a factor of -i
+					evenI.real()*twiddle.real() - evenI.imag()*twiddle.imag(),
+					evenI.imag()*twiddle.real() + evenI.real()*twiddle.imag()
+				};
+				evenRotMinusI = evenI*twiddle;
+
+				freq[i] = odd + evenRotMinusI;
+				freq[conjI] = {odd.real() - evenRotMinusI.real(), evenRotMinusI.imag() - odd.imag()};
 			}
-			freq[0].imag(tmpFreqR[size()/2]); // Pack Nyquist into bin 0
 		}
 	}
 	void fft(const Sample *inR, Sample *outR, Sample *outI) {
@@ -867,16 +883,32 @@ struct RealFFT {
 		}
 	}
 	void fft(size_t step, const Sample *inR, Sample *outR, Sample *outI) {
-		if (step == 0) {
-			for (auto &v : tmpTime) v = 0;
-		}
-		complexFft.fft(step, inR, tmpTime.data(), tmpFreqR.data(), tmpFreqI.data());
-		if (step + 1 == complexFft.steps()) {
-			for (size_t i = 0; i < size()/2; ++i) {
-				outR[i] = tmpFreqR[i];
-				outI[i] = tmpFreqI[i];
+		if (step < complexFft.steps()) {
+			complexFft.fft(step, (const Complex *)inR, tmp.data());
+		} else {
+			size_t hSize = complexFft.size(), qSize = hSize/2;
+
+			Complex bin0 = tmp[0];
+			outR[0] = bin0.real() + bin0.imag();
+			outI[0] = bin0.real() - bin0.imag();
+
+			for (size_t i = 1; i <= qSize; ++i) {
+				size_t conjI = (hSize - i);
+				Complex twiddle = twiddles[i];
+
+				Complex odd = (tmp[i] + std::conj(tmp[conjI]))*Sample(0.5);
+				Complex evenI = (tmp[i] - std::conj(tmp[conjI]))*Sample(0.5);
+				Complex evenRotMinusI = { // twiddle includes a factor of -i
+					evenI.real()*twiddle.real() - evenI.imag()*twiddle.imag(),
+					evenI.imag()*twiddle.real() + evenI.real()*twiddle.imag()
+				};
+				evenRotMinusI = evenI*twiddle;
+
+				outR[i] = odd.real() + evenRotMinusI.real();
+				outI[i] = odd.imag() + evenRotMinusI.imag();
+				outR[conjI] = odd.real() - evenRotMinusI.real();
+				outI[conjI] = evenRotMinusI.imag() - odd.imag();
 			}
-			outI[0] = tmpFreqR[size()/2]; // pack Nyquist into bin 0
 		}
 	}
 	
@@ -887,19 +919,39 @@ struct RealFFT {
 	}
 	void ifft(size_t step, const Complex *freq, Sample *time) {
 		if (step == 0) {
-			tmpFreqR[0] = freq[0].real();
-			tmpFreqI[0] = 0;
-			tmpFreqR[size()/2] = freq[0].imag(); // unpack Nyquist
-			tmpFreqI[size()/2] = 0;
-			for (size_t i = 1; i < size()/2; ++i) {
-				size_t i2 = size() - i;
-				tmpFreqR[i] = freq[i].real();
-				tmpFreqI[i] = freq[i].imag();
-				tmpFreqR[i2] = freq[i].real();
-				tmpFreqI[i2] = -freq[i].imag();
+			size_t hSize = complexFft.size(), qSize = hSize/2;
+
+			Complex bin0 = freq[0];
+			tmp[0] = {
+				bin0.real() + bin0.imag(),
+				bin0.real() - bin0.imag()
+			};
+			for (size_t i = 1; i <= qSize; ++i) {
+				size_t conjI = (hSize - i);
+				Complex twiddle = twiddles[i];
+
+				Complex odd = freq[i] + std::conj(freq[conjI]);
+				Complex evenRotMinusI = freq[i] - std::conj(freq[conjI]);
+				Complex evenI = { // Conjugate
+					evenRotMinusI.real()*twiddle.real() + evenRotMinusI.imag()*twiddle.imag(),
+					evenRotMinusI.imag()*twiddle.real() - evenRotMinusI.real()*twiddle.imag()
+				};
+
+				tmp[i] = odd + evenI;
+				tmp[conjI] = {odd.real() - evenI.real(), evenI.imag() - odd.imag()};
+			}
+		} else {
+			--step;
+			// Can't just use time as (Complex *), since it might not be aligned properly
+			complexFft.ifft(step, tmp.data(), tmpTime.data());
+			// Copy on the last step
+			if (step == complexFft.steps() - 1) {
+				for (size_t i = 0; i < tmpTime.size(); ++i) {
+					time[2*i] = tmpTime[i].real();
+					time[2*i + 1] = tmpTime[i].imag();
+				}
 			}
 		}
-		complexFft.ifft(step, tmpFreqR.data(), tmpFreqI.data(), time, tmpTime.data());
 	}
 	void ifft(const Sample *inR, const Sample *inI, Sample *outR) {
 		for (size_t s = 0; s < steps(); ++s) {
@@ -908,22 +960,45 @@ struct RealFFT {
 	}
 	void ifft(size_t step, const Sample *inR, const Sample *inI, Sample *outR) {
 		if (step == 0) {
-			tmpFreqR[0] = inR[0];
-			tmpFreqI[0] = 0;
-			tmpFreqR[size()/2] = inI[0]; // unpack Nyquist
-			tmpFreqI[size()/2] = 0;
-			for (size_t i = 1; i < size()/2; ++i) {
-				size_t i2 = size() - i;
-				tmpFreqR[i] = inR[i];
-				tmpFreqI[i] = inI[i];
-				tmpFreqR[i2] = inR[i];
-				tmpFreqI[i2] = -inI[i];
+			size_t hSize = complexFft.size(), qSize = hSize/2;
+
+			Sample bin0r = inR[0], bin0i = inI[0];
+			tmp[0] = {
+				bin0r + bin0i,
+				bin0r - bin0i
+			};
+			for (size_t i = 1; i <= qSize; ++i) {
+				size_t conjI = (hSize - i);
+				Complex twiddle = twiddles[i];
+				Sample fir = inR[i], fii = inI[i];
+				Sample fcir = inR[conjI], fcii = inI[conjI];
+
+				Complex odd = {fir + fcir, fii - fcii};
+				Complex evenRotMinusI = {fir - fcir, fii + fcii};
+				Complex evenI = { // Conjugate
+					evenRotMinusI.real()*twiddle.real() + evenRotMinusI.imag()*twiddle.imag(),
+					evenRotMinusI.imag()*twiddle.real() - evenRotMinusI.real()*twiddle.imag()
+				};
+
+				tmp[i] = odd + evenI;
+				tmp[conjI] = {odd.real() - evenI.real(), evenI.imag() - odd.imag()};
+			}
+		} else {
+			--step;
+			// Can't just use time as (Complex *), since it might not be aligned properly
+			complexFft.ifft(step, tmp.data(), tmpTime.data());
+			// Copy on the last step
+			if (step == complexFft.steps() - 1) {
+				for (size_t i = 0; i < tmpTime.size(); ++i) {
+					outR[2*i] = tmpTime[i].real();
+					outR[2*i + 1] = tmpTime[i].imag();
+				}
 			}
 		}
-		complexFft.ifft(step, tmpFreqR.data(), tmpFreqI.data(), outR, tmpTime.data());
 	}
 private:
-	std::vector<Sample> tmpTime, tmpFreqR, tmpFreqI;
+	std::vector<Complex> tmp, tmpTime;
+	std::vector<Complex> twiddles;
 
 	using ComplexFFT = SplitFFT<Sample, splitComputation>;
 	ComplexFFT complexFft;

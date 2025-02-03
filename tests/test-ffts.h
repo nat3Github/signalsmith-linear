@@ -563,9 +563,13 @@ void testRealFft(int size) {
 		error += std::norm(complexFreq[i] - realFreqC[i]);
 		error += std::norm(complexFreq[i] - realFreqS[i]);
 	}
+	for (int i = 0; i < size; ++i) {
+		error += std::norm(complexTime2[i] - realTime2C[i]);
+		error += std::norm(complexTime2[i] - realTime2S[i]);
+	}
+	error = std::sqrt(error/size);
 	
 	if (error >= size*0.001) {
-		LOG_EXPR(size);
 		LOG_EXPR(error);
 		data.log();
 		abort();
