@@ -524,10 +524,10 @@ void testComplexFftSplits(size_t maxSize, double benchmarkSeconds) {
 	figure.write("fft-splits.svg");
 }
 
-template<class Sample>
+template<class Sample, bool modified>
 void testRealFft(int size) {
 	signalsmith::linear::FFT<Sample> complexFft(size);
-	signalsmith::linear::RealFFT<Sample> realFft(size);
+	signalsmith::linear::RealFFT<Sample, true, modified> realFft(size);
 	
 	RunData<Sample> data(size);
 	auto *realTime = data.real(0);
@@ -542,9 +542,18 @@ void testRealFft(int size) {
 	
 	for (int i = 0; i < size; ++i) {
 		complexTime[i] = realTime[i];
+		// So we can see in the debug output whether they've changde
 		realFreqC[i] += 200;
 		realFreqS.real[i] += 300;
 		realFreqS.imag[i] += 400;
+	}
+	
+	if (modified) {
+		// Half-bin shift downwards
+		for (int i = 0; i < size; ++i) {
+			Sample shiftPhase = -M_PI*i/size;
+			complexTime[i] *= std::polar(Sample(1), shiftPhase);
+		}
 	}
 
 	// Interleaved complex input
@@ -556,7 +565,16 @@ void testRealFft(int size) {
 	
 	complexFft.fft(complexTime, complexFreq);
 	complexFft.ifft(complexFreq, complexTime2);
-	complexFreq[0].imag(complexFreq[size/2].real()); // Nyquist packing
+
+	if (modified) {
+		// Half-bin shift upwards
+		for (int i = 0; i < size; ++i) {
+			Sample shiftPhase = M_PI*i/size;
+			complexTime2[i] *= std::polar(Sample(1), shiftPhase);
+		}
+	} else {
+		complexFreq[0].imag(complexFreq[size/2].real()); // Nyquist packing
+	}
 
 	double error = 0;
 	for (int i = 0; i < size/2; ++i) {
@@ -570,6 +588,8 @@ void testRealFft(int size) {
 	error = std::sqrt(error/size);
 	
 	if (error >= size*0.001) {
+		LOG_EXPR(size);
+		LOG_EXPR(modified);
 		LOG_EXPR(error);
 		data.log();
 		abort();
@@ -578,9 +598,18 @@ void testRealFft(int size) {
 
 void testRealFfts(int, double) {
 	std::cout << "Real FFTs\n---------\n";
-	for (int size = 2; size < 128; size += 2) {
-		testRealFft<float>(size);
-		testRealFft<double>(size);
+
+	int sizeEnd = 128;
+#if defined(__FAST_MATH__) && (__apple_build_version__ >= 16000000) && (__apple_build_version__ <= 16000099)
+		// Apple Clang 16.0.0 is broken, and generates *completely* incorrect code for some SIMD operations
+		sizeEnd = 16; // below this, it doesn't use the broken SIMD operations
+#endif
+
+	for (int size = 2; size < sizeEnd; size += 2) {
+		testRealFft<float, false>(size);
+		testRealFft<double, false>(size);
+		testRealFft<float, true>(size);
+		testRealFft<double, true>(size);
 	}
 }
 
