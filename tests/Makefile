@@ -13,7 +13,8 @@ benchmark-fast: out/tests
 # MAC config
 out/tests: *.cpp *.h ../*.h ../platform/*.h
 	mkdir -p out
-	g++ -std=c++11 -Ofast \
+	g++ -std=c++11 \
+		-Ofast -DSIGNALSMITH_IGNORE_BROKEN_APPLECLANG \
 		-Wall -Wextra -Wfatal-errors -Wpedantic -pedantic-errors \
 		-framework Accelerate -DSIGNALSMITH_USE_ACCELERATE -DSIGNALSMITH_USE_CBLAS \
 		main.cpp -o out/tests

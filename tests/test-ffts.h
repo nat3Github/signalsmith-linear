@@ -473,7 +473,7 @@ struct SplitRunner {
 };
 
 void testComplexFftSplits(size_t maxSize, double benchmarkSeconds) {
-	std::cout << "\nfft splits\n----------\n";
+	std::cout << "\nFFT splits\n----------\n";
 	benchmarkSeconds *= 1000;
 
 	signalsmith::plot::Figure figure;
@@ -522,6 +522,144 @@ void testComplexFftSplits(size_t maxSize, double benchmarkSeconds) {
 	std::cout << "\n";
 	
 	figure.write("fft-splits.svg");
+}
+
+template<typename Sample, bool modified>
+struct RealSplitRunner {
+	using Complex = std::complex<Sample>;
+
+	signalsmith::linear::RealFFT<Sample, true, modified> fft;
+	
+	std::vector<Sample> time, freqR, freqI, time2;
+	std::vector<Complex> freq;
+	
+	void run(size_t n, signalsmith::plot::Line2D &line, double benchmarkSeconds) {
+		time.resize(n);
+		freq.resize(n/2);
+		time2.resize(n);
+
+		Stopwatch stopwatch;
+		fft.resize(n);
+
+		double totalTime = 0;
+		std::vector<double> stepTimes(fft.steps()*2);
+		while (totalTime < benchmarkSeconds) {
+			for (size_t s = 0; s < fft.steps(); ++s) {
+				stopwatch.start();
+				for (size_t r = 0; r < 10; ++r) {
+					fft.fft(s, time.data(), freq.data());
+				}
+				double t = stopwatch.lap();
+				totalTime += t;
+				stepTimes[s] += t;
+			}
+			for (size_t s = 0; s < fft.steps(); ++s) {
+				stopwatch.start();
+				for (size_t r = 0; r < 10; ++r) {
+					fft.ifft(s, freq.data(), time2.data());
+				}
+				double t = stopwatch.lap();
+				totalTime += t;
+				stepTimes[s + fft.steps()] += t;
+			}
+		}
+		Sample averageTime = totalTime/stepTimes.size();
+		for (size_t s = 0; s < stepTimes.size(); ++s) {
+			line.add(double(s)/stepTimes.size(), stepTimes[s]/averageTime);
+			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/averageTime);
+		}
+	}
+
+	void runSplit(size_t n, signalsmith::plot::Line2D &line, double benchmarkSeconds) {
+		time.resize(n);
+		freqR.resize(n/2);
+		freqI.resize(n/2);
+		time2.resize(n);
+
+		Stopwatch stopwatch;
+		fft.resize(n);
+
+		double totalTime = 0;
+		std::vector<double> stepTimes(fft.steps()*2);
+		while (totalTime < benchmarkSeconds) {
+			for (size_t s = 0; s < fft.steps(); ++s) {
+				stopwatch.start();
+				for (size_t r = 0; r < 10; ++r) {
+					fft.fft(s, time.data(), freqR.data(), freqI.data());
+				}
+				double t = stopwatch.lap();
+				totalTime += t;
+				stepTimes[s] += t;
+			}
+			for (size_t s = 0; s < fft.steps(); ++s) {
+				stopwatch.start();
+				for (size_t r = 0; r < 10; ++r) {
+					fft.ifft(s, freqR.data(), freqI.data(), time2.data());
+				}
+				double t = stopwatch.lap();
+				totalTime += t;
+				stepTimes[s + fft.steps()] += t;
+			}
+		}
+		Sample averageTime = totalTime/stepTimes.size();
+		for (size_t s = 0; s < stepTimes.size(); ++s) {
+			line.add(double(s)/stepTimes.size(), stepTimes[s]/averageTime);
+			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/averageTime);
+		}
+	}
+};
+
+template<bool modified>
+void testRealFftSplits(size_t maxSize, double benchmarkSeconds) {
+	std::cout << "\n" << (modified ? "Modified " : "") << "Real FFT splits\n----------\n";
+	benchmarkSeconds *= 1000;
+
+	signalsmith::plot::Figure figure;
+	auto &floatPlot = figure(0, 0).plot(250, 200).title("float");
+	floatPlot.y.major(0).label("time").minor(1, "100%").minor(2, "200%");
+	floatPlot.x.blank();
+	auto &floatSplitPlot = figure(1, 0).plot(250, 200).title("float (modified)");
+	floatSplitPlot.x.copyFrom(floatPlot.x);
+	floatSplitPlot.y.copyFrom(floatPlot.y).flip().label("");
+	auto &doublePlot = figure(0, 1).plot(250, 200).title("double");
+	doublePlot.x.copyFrom(floatPlot.x);
+	doublePlot.y.copyFrom(floatPlot.y);
+	auto &doubleSplitPlot = figure(1, 1).plot(250, 200).title("double (modified)");
+	doubleSplitPlot.x.copyFrom(floatPlot.x);
+	doubleSplitPlot.y.copyFrom(floatPlot.y).flip().label("");
+
+	RealSplitRunner<float, modified> floatRunner;
+	RealSplitRunner<double, modified> doubleRunner;
+	
+	auto runSize = [&](size_t n){
+		std::cout << "\tn = " << n << "      \r" << std::flush;
+		{
+			auto &line = floatPlot.fill().fillToY(0);
+			floatRunner.run(n, line, benchmarkSeconds);
+		}
+		{
+			auto &line = floatSplitPlot.fill().fillToY(0);
+			floatRunner.runSplit(n, line, benchmarkSeconds);
+		}
+		{
+			auto &line = doublePlot.fill().fillToY(0);
+			doubleRunner.run(n, line, benchmarkSeconds);
+		}
+		{
+			auto &line = doubleSplitPlot.fill().fillToY(0);
+			doubleRunner.runSplit(n, line, benchmarkSeconds);
+		}
+	};
+
+	runSize(256);
+	for (size_t m = 512; m <= maxSize; m *= 2) {
+		runSize(m/4*3);
+		runSize(m);
+		runSize(m/4*5);
+	}
+	std::cout << "\n";
+	
+	figure.write(modified ? "fft-modified-real-splits.svg" : "fft-real-splits.svg");
 }
 
 template<class Sample, bool modified>
@@ -620,4 +758,8 @@ void testFfts(int maxSize, double benchmarkSeconds) {
 	}
 	
 	testRealFfts(maxSize, benchmarkSeconds);
+	if (benchmarkSeconds > 0) {
+		testRealFftSplits<false>(maxSize, benchmarkSeconds);
+		testRealFftSplits<true>(maxSize, benchmarkSeconds);
+	}
 }
