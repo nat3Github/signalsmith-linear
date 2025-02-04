@@ -6,9 +6,9 @@
 namespace signalsmith { namespace linear {
 
 /// A self-normalising STFT, with variable position/window for output blocks
-template<typename Sample, bool splitComputation=true>
+template<typename Sample, bool splitComputation=true, bool modified=false>
 struct DynamicSTFT {
-	RealFFT<Sample, splitComputation> fft;
+	RealFFT<Sample, splitComputation, modified> fft;
 
 	using Complex = std::complex<Sample>;
 
@@ -16,7 +16,7 @@ struct DynamicSTFT {
 		_analysisChannels = inChannels;
 		_synthesisChannels = outChannels;
 		_blockSamples = blockSamples;
-		_fftSamples = fft.fastSizeAbove(blockSamples/2)*2;
+		_fftSamples = fft.fastSizeAbove((blockSamples + 1)/2)*2;
 		fft.resize(_fftSamples);
 		_fftBins = _fftSamples/2;
 		
@@ -40,8 +40,9 @@ struct DynamicSTFT {
 		outputPos = 0;
 		for (auto &v : inputBuffer) v = 0;
 		for (auto &v : sumBuffer) v = 0;
-		for (auto &v : sumWindowProducts) v = 1;
 		for (auto &v : spectrumBuffer) v = 0;
+		for (auto &v : sumWindowProducts) v = almostZero;
+		addWindowProduct();
 	}
 
 	void writeInput(size_t channel, size_t offset, size_t length, Sample *input) {
@@ -65,6 +66,9 @@ struct DynamicSTFT {
 	
 	size_t bands() const {
 		return _fftBins;
+	}
+	size_t latency() const {
+		return _synthesisOffset + _blockSamples - _analysisOffset;
 	}
 	
 	Complex * spectrum(size_t channel) {
@@ -105,8 +109,7 @@ struct DynamicSTFT {
 		_defaultInterval = defaultInterval;
 		if (!updateWindows) return;
 		
-		_synthesisOffset = _blockSamples/2;
-		_analysisOffset = _blockSamples - _synthesisOffset;
+		_analysisOffset = _synthesisOffset = _blockSamples/2;
 		
 		// ACG window with heuristically-good bandwidth (copied from DSP library)
 		double gaussianFactor = -0.695*_blockSamples/defaultInterval;
@@ -118,18 +121,18 @@ struct DynamicSTFT {
 		double offsetScale = gaussian(1)/(gaussian(3) + gaussian(1));
 		double norm = 1/(gaussian(0) - 2*offsetScale*(gaussian(2)));
 		for (auto &v : _synthesisWindow) v = 0;
-		for (size_t i = 0; i < _fftSamples; ++i) {
+		for (size_t i = 0; i < _blockSamples; ++i) {
 			double r = (2*i + 1)*invSize - 1;
 			_analysisWindow[i] = _synthesisWindow[i] = norm*(gaussian(r) - offsetScale*(gaussian(r - 2) + gaussian(r + 2)));
 		}
 		// Force perfect reconstruction
 		for (size_t i = 0; i < defaultInterval; ++i) {
 			Sample sum = 0;
-			for (size_t i2 = i; i2 < _fftSamples; i2 += defaultInterval) {
+			for (size_t i2 = i; i2 < _blockSamples; i2 += defaultInterval) {
 				sum += _analysisWindow[i2]*_synthesisWindow[i2];
 			}
 			Sample factor = 1/std::sqrt(sum);
-			for (size_t i2 = i; i2 < _fftSamples; i2 += defaultInterval) {
+			for (size_t i2 = i; i2 < _blockSamples; i2 += defaultInterval) {
 				_analysisWindow[i2] *= factor;
 				_synthesisWindow[i2] *= factor;
 			}
@@ -154,8 +157,8 @@ struct DynamicSTFT {
 			for (auto &v : timeBuffer) v = 0;
 			for (size_t i = 0; i < _blockSamples; ++i) {
 				Sample w = _analysisWindow[i];
-				size_t ti = (i + _fftSamples - _synthesisOffset)%_fftSamples;
-				size_t bi = (inputPos + i + _inputLengthSamples - _blockSamples - samplesInPast)%_inputLengthSamples;
+				size_t ti = (i + _fftSamples - _analysisOffset)%_fftSamples;
+				size_t bi = (inputPos + i - _blockSamples - samplesInPast + _inputLengthSamples)%_inputLengthSamples;
 				timeBuffer[ti] = buffer[bi]*w;
 			}
 			return;
@@ -189,20 +192,9 @@ struct DynamicSTFT {
 				}
 				sumWindowProducts[i2] = almostZero;
 			}
-
 			outputPos = (outputPos + samplesSincePrev)%_blockSamples;
-			
-			int windowShift = int(_synthesisOffset) - int(_analysisOffset);
-			int wMin = std::max<int>(0, windowShift);
-			int wMax = std::min<int>(_blockSamples, int(_blockSamples) + windowShift);
 
-			Sample *windowProduct = sumWindowProducts.data();
-			for (int i = wMin; i < wMax; ++i) {
-				Sample wa = _analysisWindow[i - windowShift];
-				Sample ws = _synthesisWindow[i];
-				size_t bi = (outputPos + i)%_blockSamples;
-				windowProduct[bi] += wa*ws*fft.size();
-			}
+			addWindowProduct();
 			return;
 		}
 		--step;
@@ -235,7 +227,8 @@ struct DynamicSTFT {
 	COMPAT_SPELLING(synthesise, synthesize);
 	COMPAT_SPELLING(synthesiseStep, synthesizeStep);
 	COMPAT_SPELLING(synthesiseSteps, synthesizeSteps);
-private:
+#define STFT_DEBUG_PRIVATE
+//private:
 	static constexpr Sample almostZero = 1e-30;
 
 	size_t _analysisChannels, _synthesisChannels, _inputLengthSamples, _blockSamples, _fftSamples, _fftBins;
@@ -253,6 +246,20 @@ private:
 	size_t outputPos = 0;
 	std::vector<Sample> sumBuffer;
 	std::vector<Sample> sumWindowProducts;
+
+	void addWindowProduct() {
+		int windowShift = int(_synthesisOffset) - int(_analysisOffset);
+		int wMin = std::max<int>(0, windowShift);
+		int wMax = std::min<int>(_blockSamples, int(_blockSamples) + windowShift);
+
+		Sample *windowProduct = sumWindowProducts.data();
+		for (int i = wMin; i < wMax; ++i) {
+			Sample wa = _analysisWindow[i - windowShift];
+			Sample ws = _synthesisWindow[i];
+			size_t bi = (outputPos + i)%_blockSamples;
+			windowProduct[bi] += wa*ws*_fftSamples;
+		}
+	}
 };
 
 }} // namespace

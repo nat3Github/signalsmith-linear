@@ -1194,8 +1194,6 @@ void testRealFft(int size) {
 }
 
 void testRealFfts(int, double) {
-	std::cout << "Real FFTs\n---------\n";
-
 	int sizeEnd = 128;
 #if defined(__FAST_MATH__) && (__apple_build_version__ >= 16000000) && (__apple_build_version__ <= 16000099)
 		// Apple Clang 16.0.0 is broken, and generates *completely* incorrect code for some SIMD operations
