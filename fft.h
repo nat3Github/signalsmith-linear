@@ -117,20 +117,21 @@ template<typename Sample>
 struct SimpleFFT {
 	using Complex = std::complex<Sample>;
 	
-	SimpleFFT(size_t maxSize=0) {
-		resize(maxSize);
+	SimpleFFT(size_t size=0) {
+		resize(size);
 	}
 	
-	void resize(size_t maxSize) {
-		twiddles.resize(maxSize/2);
-		for (size_t i = 0; i < maxSize/2; ++i) {
-			Sample twiddlePhase = -2*M_PI*i/maxSize;
+	void resize(size_t size) {
+		twiddles.resize(size/2);
+		for (size_t i = 0; i < size/2; ++i) {
+			Sample twiddlePhase = -2*M_PI*i/size;
 			twiddles[i] = std::polar(Sample(1), twiddlePhase);
 		}
-		working.resize(maxSize);
+		working.resize(size);
 	}
 	
-	void fft(size_t size, const Complex *time, Complex *freq) {
+	void fft(const Complex *time, Complex *freq) {
+		size_t size = working.size();
 		if (size <= 1) {
 			*freq = *time;
 			return;
@@ -138,7 +139,8 @@ struct SimpleFFT {
 		fftPass<false>(size, 1, time, freq, working.data());
 	}
 
-	void ifft(size_t size, const Complex *freq, Complex *time) {
+	void ifft(const Complex *freq, Complex *time) {
+		size_t size = working.size();
 		if (size <= 1) {
 			*time = *freq;
 			return;
@@ -146,7 +148,8 @@ struct SimpleFFT {
 		fftPass<true>(size, 1, freq, time, working.data());
 	}
 
-	void fft(size_t size, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+	void fft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		size_t size = working.size();
 		if (size <= 1) {
 			*outR = *inR;
 			*outI = *inI;
@@ -155,7 +158,8 @@ struct SimpleFFT {
 		Sample *workingR = (Sample *)working.data(), *workingI = workingR + size;
 		fftPass<false>(size, 1, inR, inI, outR, outI, workingR, workingI);
 	}
-	void ifft(size_t size, const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+	void ifft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
+		size_t size = working.size();
 		if (size <= 1) {
 			*outR = *inR;
 			*outI = *inI;
@@ -244,6 +248,79 @@ private:
 	}
 };
 
+// Wraps a complex FFT into a real one
+template<typename Sample, class ComplexFFT=SimpleFFT<Sample>>
+struct SimpleRealFFT {
+	using Complex = std::complex<Sample>;
+
+	SimpleRealFFT(size_t size=0) {
+		resize(size);
+	}
+	
+	void resize(size_t size) {
+		complexFft.resize(size);
+		tmpTime.resize(size);
+		tmpFreq.resize(size);
+	}
+	
+	void fft(const Sample *time, Complex *freq) {
+		for (size_t i = 0; i < tmpTime.size(); ++i) {
+			tmpTime[i] = time[i];
+		}
+		complexFft.fft(tmpTime.data(), tmpFreq.data());
+		for (size_t i = 0; i < tmpFreq.size()/2; ++i) {
+			freq[i] = tmpFreq[i];
+		}
+		freq[0] = {
+			tmpFreq[0].real(),
+			tmpFreq[tmpFreq.size()/2].real()
+		};
+	}
+	void fft(const Sample *inR, Sample *outR, Sample *outI) {
+		Sample *tmpFreqR = (Sample *)tmpFreq.data(), *tmpFreqI = tmpFreqR + tmpFreq.size();
+		for (size_t i = 0; i < tmpTime.size()/2; ++i) {
+			tmpTime[i] = 0;
+		}
+		complexFft.fft(inR, (const Sample *)tmpTime.data(), tmpFreqR, tmpFreqI);
+		for (size_t i = 0; i < tmpTime.size()/2; ++i) {
+			outR[i] = tmpFreqR[i];
+			outI[i] = tmpFreqI[i];
+		}
+		outI[0] = tmpFreqR[tmpFreq.size()/2];
+	}
+
+	void ifft(const Complex *freq, Sample *time) {
+		tmpFreq[0] = freq[0].real();
+		tmpFreq[tmpFreq.size()/2] = freq[0].imag();
+		for (size_t i = 1; i < tmpFreq.size()/2; ++i) {
+			tmpFreq[i] = freq[i];
+			tmpFreq[tmpFreq.size() - i] = std::conj(freq[i]);
+		}
+		complexFft.ifft(tmpFreq.data(), tmpTime.data());
+		for (size_t i = 0; i < tmpTime.size(); ++i) {
+			time[i] = tmpTime[i].real();
+		}
+	}
+	void ifft(const Sample *inR, const Sample *inI, Sample *outR) {
+		Sample *tmpFreqR = (Sample *)tmpFreq.data(), *tmpFreqI = tmpFreqR + tmpFreq.size();
+		tmpFreqR[0] = inR[0];
+		tmpFreqR[tmpFreq.size()/2] = inI[0];
+		tmpFreqI[0] = 0;
+		tmpFreqI[tmpFreq.size()/2] = 0;
+		for (size_t i = 1; i < tmpFreq.size()/2; ++i) {
+			tmpFreqR[i] = inR[i];
+			tmpFreqI[i] = inI[i];
+			tmpFreqR[tmpFreq.size() - i] = inR[i];
+			tmpFreqI[tmpFreq.size() - i] = -inI[i];
+		}
+		complexFft.ifft(tmpFreqR, tmpFreqI, outR, (Sample *)tmpTime.data());
+	}
+
+private:
+	ComplexFFT complexFft;
+	std::vector<Complex> tmpTime, tmpFreq;
+};
+
 /// A power-of-2 only FFT, specialised with platform-specific fast implementations where available
 template<typename Sample>
 struct Pow2FFT {
@@ -267,7 +344,7 @@ struct Pow2FFT {
 		simpleFFT.fft(_size, inR, inI, outR, outI);
 	}
 
-	void ifft(const Complex *freq, Complex *time) {
+	void ifft(const Complex *freq, Sample *time) {
 		simpleFFT.ifft(_size, freq, time);
 	}
 	void ifft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
@@ -278,6 +355,14 @@ private:
 	size_t _size;
 	std::vector<Complex> tmp;
 	SimpleFFT<Sample> simpleFFT;
+};
+
+/// A power-of-2 only Real FFT, specialised with platform-specific fast implementations where available
+template<typename Sample>
+struct Pow2RealFFT : public SimpleRealFFT<Sample, Pow2FFT<Sample>> {
+	static constexpr bool prefersSplit = Pow2FFT<Sample>::prefersSplit;
+	
+	using SimpleRealFFT<Sample, Pow2FFT<Sample>>::SimpleRealFFT;
 };
 
 /// An FFT which can be computed in chunks

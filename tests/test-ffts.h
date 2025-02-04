@@ -2,7 +2,7 @@
 
 #include "./test-runner.h"
 
-// ---------- wrappers
+// ---------- complex wrappers
 
 template<class Sample>
 struct SimpleWrapper {
@@ -15,8 +15,8 @@ struct SimpleWrapper {
 	template<class Data>
 	void run(Data &data) {
 		auto *time = data.complex(0), *freq = data.complex(1), *time2 = data.complex(2);
-		fft.fft(data.size, time, freq);
-		fft.ifft(data.size, freq, time2);
+		fft.fft(time, freq);
+		fft.ifft(freq, time2);
 	}
 	
 	template<class Data>
@@ -37,8 +37,8 @@ struct SimpleWrapperSplit {
 	template<class Data>
 	void run(Data &data) {
 		auto time = data.split(0), freq = data.split(1), time2 = data.split(2);
-		fft.fft(data.size, time.real, time.imag, freq.real, freq.imag);
-		fft.ifft(data.size, freq.real, freq.imag, time2.real, time2.imag);
+		fft.fft(time.real, time.imag, freq.real, freq.imag);
+		fft.ifft(freq.real, freq.imag, time2.real, time2.imag);
 	}
 	
 	template<class Data>
@@ -222,6 +222,259 @@ struct SignalsmithDSPWrapper {
 	}
 };
 
+// ---------- real wrappers
+
+template<class Sample>
+struct SimpleRealWrapper {
+	signalsmith::linear::SimpleRealFFT<Sample> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+	
+	template<class Data>
+	void run(Data &data) {
+		auto *time = data.real(0);
+		auto *freq = data.complex(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq);
+		fft.ifft(freq, time2);
+	}
+	
+	template<class Data>
+	void normalise(Data &data) {
+		data.complexToSplit(0);
+	}
+};
+
+template<class Sample>
+struct SimpleRealWrapperSplit {
+	signalsmith::linear::SimpleRealFFT<Sample> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+	
+	template<class Data>
+	void run(Data &data) {
+		auto *time = data.real(0);
+		auto freq = data.split(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq.real, freq.imag);
+		fft.ifft(freq.real, freq.imag, time2);
+	}
+	
+	template<class Data>
+	void normalise(Data &data) {
+		data.splitToComplex(0);
+	}
+};
+
+template<class Sample>
+struct Pow2RealWrapper {
+	signalsmith::linear::Pow2RealFFT<Sample> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	void run(Data& data) {
+		auto *time = data.real(0);
+		auto *freq = data.complex(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq);
+		fft.ifft(freq, time2);
+	}
+
+	template<class Data>
+	void normalise(Data &data) {
+		data.complexToSplit(0);
+	}
+};
+template<class Sample>
+struct Pow2RealWrapperSplit {
+	signalsmith::linear::Pow2RealFFT<Sample> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	void run(Data &data) {
+		auto *time = data.real(0);
+		auto freq = data.split(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq.real, freq.imag);
+		fft.ifft(freq.real, freq.imag, time2);
+	}
+	
+	template<class Data>
+	void normalise(Data &data) {
+		data.splitToComplex(0);
+	}
+};
+
+template<class Sample, bool modified=false>
+struct SplitRealWrapper {
+	signalsmith::linear::RealFFT<Sample, true, modified> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	void run(Data& data) {
+		auto *time = data.real(0);
+		auto *freq = data.complex(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq);
+		fft.ifft(freq, time2);
+	}
+
+	template<class Data>
+	void normalise(Data &data) {
+		data.complexToSplit(0);
+	}
+};
+template<class Sample, bool modified=false>
+struct SplitRealWrapperSplit {
+	signalsmith::linear::RealFFT<Sample, true, modified> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	void run(Data &data) {
+		auto *time = data.real(0);
+		auto freq = data.split(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq.real, freq.imag);
+		fft.ifft(freq.real, freq.imag, time2);
+	}
+	
+	template<class Data>
+	void normalise(Data &data) {
+		data.splitToComplex(0);
+	}
+};
+template<class Sample, bool modified=false>
+struct UnSplitRealWrapper {
+	signalsmith::linear::RealFFT<Sample, false, modified> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	void run(Data& data) {
+		auto *time = data.real(0);
+		auto *freq = data.complex(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq);
+		fft.ifft(freq, time2);
+	}
+
+	template<class Data>
+	void normalise(Data &data) {
+		data.complexToSplit(0);
+	}
+};
+template<class Sample, bool modified=false>
+struct UnSplitRealWrapperSplit {
+	signalsmith::linear::RealFFT<Sample, false, modified> fft;
+
+	void prepare(size_t size, size_t) {
+		fft.resize(size);
+	}
+
+	template<class Data>
+	void run(Data &data) {
+		auto *time = data.real(0);
+		auto freq = data.split(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq.real, freq.imag);
+		fft.ifft(freq.real, freq.imag, time2);
+	}
+	
+	template<class Data>
+	void normalise(Data &data) {
+		data.splitToComplex(0);
+	}
+};
+
+#include "./others/signalsmith-fft.h"
+template<class Sample>
+struct SignalsmithFFTRealWrapper {
+	signalsmith::RealFFT<Sample> fft{1};
+
+	void prepare(size_t size, size_t) {
+		fft.setSize(size);
+	}
+	
+	template<class Data>
+	void run(Data& data) {
+		auto *time = data.real(0);
+		auto *freq = data.complex(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq);
+		fft.ifft(freq, time2);
+	}
+
+	template<class Data>
+	void normalise(Data &data) {
+		data.complexToSplit(0);
+	}
+};
+
+#include "./others/dsp/fft.h"
+template<class Sample>
+struct SignalsmithDSPRealWrapper {
+	signalsmith::fft::RealFFT<Sample> fft{1};
+
+	void prepare(size_t size, size_t) {
+		fft.setSize(size);
+	}
+	
+	template<class Data>
+	void run(Data& data) {
+		auto *time = data.real(0);
+		auto *freq = data.complex(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq);
+		fft.ifft(freq, time2);
+	}
+
+	template<class Data>
+	void normalise(Data &data) {
+		data.complexToSplit(0);
+	}
+};
+
+
+template<class Sample>
+struct SignalsmithDSPMRealWrapper {
+	signalsmith::fft::ModifiedRealFFT<Sample> fft{1};
+
+	void prepare(size_t size, size_t) {
+		fft.setSize(size);
+	}
+	
+	template<class Data>
+	void run(Data& data) {
+		auto *time = data.real(0);
+		auto *freq = data.complex(0);
+		auto *time2 = data.real(1);
+		fft.fft(time, freq);
+		fft.ifft(freq, time2);
+	}
+
+	template<class Data>
+	void normalise(Data &data) {
+		data.complexToSplit(0);
+	}
+};
 // ---------- main code
 
 void testComplexFfts(int maxSize, double benchmarkSeconds) {
@@ -383,6 +636,186 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 	std::cout << "                                         \r" << std::flush;
 
 	plot.plot.x.range(std::log, 1, maxSize).label("FFT size");
+}
+
+void benchmarkRealFfts(int maxSize, double benchmarkSeconds) {
+	RunPlot plot("ffts-real", benchmarkSeconds);
+
+	auto splitFloat = plot.runner<SplitRealWrapper<float>>("Split (float)");
+	auto splitDouble = plot.runner<SplitRealWrapper<double>>("Split (double)");
+	auto splitFloatSplit = plot.runner<SplitRealWrapperSplit<float>>("Split (split float)");
+	auto splitDoubleSplit = plot.runner<SplitRealWrapperSplit<double>>("Split (split double)");
+	auto splitMFloat = plot.runner<SplitRealWrapper<float, true>>("Split (modified float)");
+	auto splitMDouble = plot.runner<SplitRealWrapper<double, true>>("Split (modified double)");
+	auto splitMFloatSplit = plot.runner<SplitRealWrapperSplit<float, true>>("Split (modified split float)");
+	auto splitMDoubleSplit = plot.runner<SplitRealWrapperSplit<double, true>>("Split (modified split double)");
+#ifdef INCLUDE_UNSPLIT_SPLITFFT
+	auto unsplitFloat = plot.runner<UnSplitRealWrapper<float>>("Un-Split (float)");
+	auto unsplitDouble = plot.runner<UnSplitRealWrapper<double>>("Un-Split (double)");
+	auto unsplitFloatSplit = plot.runner<UnSplitRealWrapperSplit<float>>("Un-Split (split float)");
+	auto unsplitDoubleSplit = plot.runner<UnSplitRealWrapperSplit<double>>("Un-Split (split double)");
+	auto unsplitMFloat = plot.runner<UnSplitRealWrapper<float, true>>("Un-Split (modified float)");
+	auto unsplitMDouble = plot.runner<UnSplitRealWrapper<double, true>>("Un-Split (modified double)");
+	auto unsplitMFloatSplit = plot.runner<UnSplitRealWrapperSplit<float, true>>("Un-Split (modified split float)");
+	auto unsplitMDoubleSplit = plot.runner<UnSplitRealWrapperSplit<double, true>>("Un-Split (modified split double)");
+#endif
+	auto pow2Float = plot.runner<Pow2RealWrapper<float>>("Pow2 (float)");
+	auto pow2Double = plot.runner<Pow2RealWrapper<double>>("Pow2 (double)");
+	auto pow2FloatSplit = plot.runner<Pow2RealWrapperSplit<float>>("Pow2 (split float)");
+	auto pow2DoubleSplit = plot.runner<Pow2RealWrapperSplit<double>>("Pow2 (split double)");
+
+	auto simpleFloat = plot.runner<SimpleRealWrapper<float>>("Simple (float)");
+	auto simpleDouble = plot.runner<SimpleRealWrapper<double>>("Simple (double)");
+	auto simpleFloatSplit = plot.runner<SimpleRealWrapperSplit<float>>("Simple (split float)");
+	auto simpleDoubleSplit = plot.runner<SimpleRealWrapperSplit<double>>("Simple (split double)");
+	auto dspFloat = plot.runner<SignalsmithDSPRealWrapper<float>>("DSP library (float)");
+	auto dspDouble = plot.runner<SignalsmithDSPRealWrapper<double>>("DSP library (double)");
+	auto dspMFloat = plot.runner<SignalsmithDSPMRealWrapper<float>>("DSP library (modified float)");
+	auto dspMDouble = plot.runner<SignalsmithDSPMRealWrapper<double>>("DSP library (modified double)");
+
+	auto runSize = [&](int n, int pow3=0, int pow5=0, int pow7=0, bool alwaysRunSplit=false){
+		std::cout << "                n = " << n << "\r" << std::flush;
+		double refTime = 1e-8*n*(std::log2(n) + 1); // heuristic for expected computation time, just to compare different sizes
+
+		RunData<double> dataDouble(n);
+		RunData<float> dataFloat(n);
+		for (size_t i = 0; i < 3; ++i) {
+			dataDouble.complexToSplit(i);
+			dataFloat.complexToSplit(i);
+		}
+
+		RunData<double> *refPtrDouble = nullptr, *nullDouble = nullptr;
+		RunData<float> *refPtrFloat = nullptr, *nullFloat = nullptr;
+
+		auto refDataDouble = dataDouble;
+		auto refDataFloat = dataFloat;
+		bool checkResults = true;
+#if defined(__FAST_MATH__) && (__apple_build_version__ >= 16000000) && (__apple_build_version__ <= 16000099)
+		// Apple Clang 16.0.0 is broken, and generates *completely* incorrect code for some SIMD operations
+		checkResults = (n < 48); // below this, it doesn't use the broken SIMD operations
+#endif
+
+		if (checkResults && n < 256) {
+			refPtrDouble = &refDataDouble;
+			refPtrFloat = &refDataFloat;
+			auto *timeDouble = refDataDouble.real(0);
+			auto *freqDouble = refDataDouble.complex(0);
+			auto *time2Double = refDataDouble.real(1);
+			auto *timeFloat = refDataFloat.real(0);
+			auto *freqFloat = refDataFloat.complex(0);
+			auto *time2Float = refDataFloat.real(1);
+			for (int f = 0; f <= n/2; ++f) {
+				std::complex<double> sumD = 0;
+				std::complex<double> sumF = 0;
+				for (int i = 0; i < n; ++i) {
+					auto coeff = std::polar(1.0, -2*M_PI*i*f/n);
+					sumD += coeff*timeDouble[i];
+					std::complex<float> vf = timeFloat[i];
+					sumF += coeff*std::complex<double>{vf.real(), vf.imag()};
+				}
+				if (f == n/2) {
+					freqDouble[0].imag(sumD.real());
+					freqFloat[0].imag(sumF.real());
+				} else {
+					freqDouble[f] = sumD;
+					freqFloat[f] = {float(sumF.real()), float(sumF.imag())};
+				}
+			}
+			// Round-trip should match, with scale factor N
+			for (int i = 0; i < n; ++i) {
+				time2Double[i] = timeDouble[i]*double(n);
+				time2Float[i] = timeFloat[i]*float(n);
+			}
+			refDataDouble.complexToSplit(0);
+			refDataFloat.complexToSplit(0);
+		}
+
+		if (pow3 + pow5 + pow7 == 0) {
+			std::cout << "simple double           \r";
+			simpleDouble.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "simple double (split)           \r";
+			simpleDoubleSplit.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "simple float           \r";
+			simpleFloat.run(dataFloat, refTime, refPtrFloat);
+			std::cout << "simple float (split)           \r";
+			simpleFloatSplit.run(dataFloat, refTime, refPtrFloat);
+			std::cout << "Pow2 double           \r";
+			pow2Double.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "Pow2 float           \r";
+			pow2Float.run(dataFloat, refTime, refPtrFloat);
+			std::cout << "Pow2 double (split)           \r";
+			pow2DoubleSplit.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "Pow2 float (split)           \r";
+			pow2FloatSplit.run(dataFloat, refTime, refPtrFloat);
+		}
+		if (pow5 + pow7 == 0) {
+			std::cout << "DSP double           \r";
+			dspDouble.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "DSP float           \r";
+			dspFloat.run(dataFloat, refTime, refPtrFloat);
+			std::cout << "DSP modified double           \r";
+			dspMDouble.run(dataDouble, refTime, nullDouble);
+			std::cout << "DSP modified float           \r";
+			dspMFloat.run(dataFloat, refTime, nullFloat);
+		}
+		if (alwaysRunSplit || signalsmith::linear::SplitFFT<double>::fastSizeAbove(n) == size_t(n)) {
+			std::cout << "split double           \r";
+			splitDouble.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "split float           \r";
+			splitFloat.run(dataFloat, refTime, refPtrFloat);
+			std::cout << "split double (split)           \r";
+			splitDoubleSplit.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "split float (split)           \r";
+			splitFloatSplit.run(dataFloat, refTime, refPtrFloat);
+
+			std::cout << "split modified double           \r";
+			splitMDouble.run(dataDouble, refTime, nullDouble);
+			std::cout << "split modified float           \r";
+			splitMFloat.run(dataFloat, refTime, nullFloat);
+			std::cout << "split modified double (split)           \r";
+			splitMDoubleSplit.run(dataDouble, refTime, nullDouble);
+			std::cout << "split modified float (split)           \r";
+			splitMFloatSplit.run(dataFloat, refTime, nullFloat);
+
+#ifdef INCLUDE_UNSPLIT_SPLITFFT
+			std::cout << "unsplit double           \r";
+			unsplitDouble.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "unsplit float           \r";
+			unsplitFloat.run(dataFloat, refTime, refPtrFloat);
+			std::cout << "unsplit double (split)           \r";
+			unsplitDoubleSplit.run(dataDouble, refTime, refPtrDouble);
+			std::cout << "unsplit float (split)           \r";
+			unsplitFloatSplit.run(dataFloat, refTime, refPtrFloat);
+
+			std::cout << "unsplit modified double           \r";
+			unsplitMDouble.run(dataDouble, refTime, nullDouble);
+			std::cout << "unsplit modified float           \r";
+			unsplitMFloat.run(dataFloat, refTime, nullFloat);
+			std::cout << "unsplit modified double (split)           \r";
+			unsplitMDoubleSplit.run(dataDouble, refTime, nullDouble);
+			std::cout << "unsplit modified float (split)           \r";
+			unsplitMFloatSplit.run(dataFloat, refTime, nullFloat);
+#endif
+		}
+	};
+
+	for (int n = 2; n <= maxSize; n *= 2) {
+		if (n/32) runSize(n*9/16, 2);
+		if (n/16) runSize(n*5/8, 0, 1);
+		if (n/8) runSize(n*3/4, 1);
+		if (n/16) runSize(n*7/8, 0, 0, 1);
+		if (n/32) runSize(n*15/16, 1, 1);
+		runSize(n);
+
+		if (int(std::round(std::log2(n)))%2 == 0) {
+			plot.tick(n, 2);
+		} else {
+			plot.tick(n, "");
+		}
+	}
+	std::cout << "                                         \r" << std::flush;
+
+	plot.plot.x.range(std::log, 1, maxSize).label("Real FFT size");
 }
 
 template<typename Sample>
@@ -618,13 +1051,13 @@ void testRealFftSplits(size_t maxSize, double benchmarkSeconds) {
 	auto &floatPlot = figure(0, 0).plot(250, 200).title("float");
 	floatPlot.y.major(0).label("time").minor(1, "100%").minor(2, "200%");
 	floatPlot.x.blank();
-	auto &floatSplitPlot = figure(1, 0).plot(250, 200).title("float (modified)");
+	auto &floatSplitPlot = figure(1, 0).plot(250, 200).title("float (split-complex)");
 	floatSplitPlot.x.copyFrom(floatPlot.x);
 	floatSplitPlot.y.copyFrom(floatPlot.y).flip().label("");
 	auto &doublePlot = figure(0, 1).plot(250, 200).title("double");
 	doublePlot.x.copyFrom(floatPlot.x);
 	doublePlot.y.copyFrom(floatPlot.y);
-	auto &doubleSplitPlot = figure(1, 1).plot(250, 200).title("double (modified)");
+	auto &doubleSplitPlot = figure(1, 1).plot(250, 200).title("double (split-complex)");
 	doubleSplitPlot.x.copyFrom(floatPlot.x);
 	doubleSplitPlot.y.copyFrom(floatPlot.y).flip().label("");
 
@@ -664,19 +1097,28 @@ void testRealFftSplits(size_t maxSize, double benchmarkSeconds) {
 
 template<class Sample, bool modified>
 void testRealFft(int size) {
+	bool isPow2 = std::round(std::exp2(std::round(std::log2(size)))) == size;
+
 	signalsmith::linear::FFT<Sample> complexFft(size);
 	signalsmith::linear::RealFFT<Sample, true, modified> realFft(size);
+	signalsmith::linear::Pow2RealFFT<Sample> pow2Fft(size);
 	
 	RunData<Sample> data(size);
-	auto *realTime = data.real(0);
-	auto *realFreqC = data.complex(0);
-	auto realFreqS = data.split(0);
-	auto *realTime2C = data.real(1);
-	auto realTime2S = data.real(2);
+	auto *realTime = data.real(0, "input");
 	
-	auto *complexTime = data.complex(1);
-	auto *complexFreq = data.complex(2);
-	auto *complexTime2 = data.complex(3);
+	auto *realFreqC = data.complex(0, "Real (c)");
+	auto realFreqS = data.split(0, "Real (s)");
+	auto *realTime2C = data.real(1, "Real (c->t)");
+	auto realTime2S = data.real(2, "Real (s->t)");
+
+	auto *pow2FreqC = data.complex(1, "Pow2 (c)");
+	auto pow2FreqS = data.split(1, "Pow2 (s)");
+	auto *pow2Time2C = data.real(3, "Pow2 (c->t)");
+	auto pow2Time2S = data.real(4, "Pow2 (s->t)");
+
+	auto *complexTime = data.complex(2, "Ref (t)");
+	auto *complexFreq = data.complex(3, "Ref (c)");
+	auto *complexTime2 = data.complex(4, "Ref (c->t)");
 	
 	for (int i = 0; i < size; ++i) {
 		complexTime[i] = realTime[i];
@@ -700,6 +1142,12 @@ void testRealFft(int size) {
 	// Split-complex input
 	realFft.fft(realTime, realFreqS.real, realFreqS.imag);
 	realFft.ifft(realFreqS.real, realFreqS.imag, realTime2S);
+	if (isPow2) {
+		pow2Fft.fft(realTime, pow2FreqC);
+		pow2Fft.ifft(pow2FreqC, pow2Time2C);
+		pow2Fft.fft(realTime, pow2FreqS.real, pow2FreqS.imag);
+		pow2Fft.ifft(pow2FreqS.real, pow2FreqS.imag, pow2Time2S);
+	}
 	
 	complexFft.fft(complexTime, complexFreq);
 	complexFft.ifft(complexFreq, complexTime2);
@@ -723,9 +1171,20 @@ void testRealFft(int size) {
 		error += std::norm(complexTime2[i] - realTime2C[i]);
 		error += std::norm(complexTime2[i] - realTime2S[i]);
 	}
+	if (!modified && isPow2) {
+		for (int i = 0; i < size/2; ++i) {
+			error += std::norm(complexFreq[i] - pow2FreqC[i]);
+			error += std::norm(complexFreq[i] - pow2FreqS[i]);
+		}
+		for (int i = 0; i < size; ++i) {
+			error += std::norm(complexTime2[i] - pow2Time2C[i]);
+			error += std::norm(complexTime2[i] - pow2Time2S[i]);
+		}
+	}
 	error = std::sqrt(error/size);
 	
 	if (error >= size*0.001) {
+		LOG_EXPR(typeid(Sample).name());
 		LOG_EXPR(size);
 		LOG_EXPR(modified);
 		LOG_EXPR(error);
@@ -759,6 +1218,8 @@ void testFfts(int maxSize, double benchmarkSeconds) {
 	
 	testRealFfts(maxSize, benchmarkSeconds);
 	if (benchmarkSeconds > 0) {
+		benchmarkRealFfts(maxSize, benchmarkSeconds);
+
 		testRealFftSplits<false>(maxSize, benchmarkSeconds);
 		testRealFftSplits<true>(maxSize, benchmarkSeconds);
 	}

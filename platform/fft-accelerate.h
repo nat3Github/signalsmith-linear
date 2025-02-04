@@ -90,7 +90,8 @@ namespace _impl {
 		DSPDoubleSplitComplex aSplit = {(double *)ar, (double *)ai};
 		DSPDoubleSplitComplex bSplit = {br, bi};
 		vDSP_zvmovD(&aSplit, aStride, &bSplit, 1, size);
-	}}
+	}
+}
 
 template<>
 struct Pow2FFT<float> {
@@ -99,7 +100,7 @@ struct Pow2FFT<float> {
 	using Complex = std::complex<float>;
 
 	Pow2FFT(size_t size = 0) {
-		if (size > 0) resize(size);
+		resize(size);
 	}
 	~Pow2FFT() {
 		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
@@ -108,12 +109,16 @@ struct Pow2FFT<float> {
 	void resize(size_t size) {
 		_size = size;
 		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
-		log2 = std::round(std::log2(size));
-		fftSetup = vDSP_create_fftsetup(log2, FFT_RADIX2);
-		hasSetup = true;
+		if (!size) {
+			hasSetup = false;
+			return;
+		}
 
 		splitReal.resize(size);
 		splitImag.resize(size);
+		log2 = std::round(std::log2(size));
+		fftSetup = vDSP_create_fftsetup(log2, FFT_RADIX2);
+		hasSetup = true;
 	}
 
 	void fft(const Complex* input, Complex* output) {
@@ -147,12 +152,83 @@ private:
 	int log2 = 0;
 	std::vector<float> splitReal, splitImag;
 };
+
+template<>
+struct Pow2RealFFT<float> {
+	static constexpr bool prefersSplit = true;
+
+	using Complex = std::complex<float>;
+
+	Pow2RealFFT(size_t size = 0) {
+		resize(size);
+	}
+	~Pow2RealFFT() {
+		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
+	}
+
+	void resize(size_t size) {
+		_size = size;
+		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
+		if (!size) {
+			hasSetup = false;
+			return;
+		}
+
+		splitReal.resize(size);
+		splitImag.resize(size);
+		log2 = std::log2(size);
+		fftSetup = vDSP_create_fftsetup(log2, FFT_RADIX2);
+		hasSetup = true;
+	}
+
+	void fft(const float* input, Complex* output) {
+		float mul = 0.5f;
+		vDSP_vsmul(input, 2, &mul, splitReal.data(), 1, _size/2);
+		vDSP_vsmul(input + 1, 2, &mul, splitImag.data(), 1, _size/2);
+		DSPSplitComplex tmpSplit{splitReal.data(), splitImag.data()};
+		vDSP_fft_zrip(fftSetup, &tmpSplit, 1, log2, kFFTDirection_Forward);
+		vDSP_ztoc(&tmpSplit, 1, (DSPComplex *)output, 2, _size/2);
+	}
+	void fft(const float *inR, float *outR, float *outI) {
+		DSPSplitComplex outputSplit{outR, outI};
+		float mul = 0.5f;
+		vDSP_vsmul(inR, 2, &mul, outR, 1, _size/2);
+		vDSP_vsmul(inR + 1, 2, &mul, outI, 1, _size/2);
+		vDSP_fft_zrip(fftSetup, &outputSplit, 1, log2, kFFTDirection_Forward);
+	}
+
+	void ifft(const Complex * input, float * output) {
+		DSPSplitComplex tmpSplit{splitReal.data(), splitImag.data()};
+		vDSP_ctoz((DSPComplex*)input, 2, &tmpSplit, 1, _size/2);
+		vDSP_fft_zrip(fftSetup, &tmpSplit, 1, log2, kFFTDirection_Inverse);
+		DSPSplitComplex outputSplit{output, output + 1};
+		vDSP_zvmov(&tmpSplit, 1, &outputSplit, 2, _size/2);
+	}
+	void ifft(const float *inR, const float *inI, float *outR) {
+		DSPSplitComplex inputSplit{(float *)inR, (float *)inI};
+		DSPSplitComplex tmpSplit{splitReal.data(), splitImag.data()};
+		vDSP_fft_zrop(fftSetup, &inputSplit, 1, &tmpSplit, 1, log2, kFFTDirection_Inverse);
+		DSPSplitComplex outputSplit{outR, outR + 1};
+		// We can't use vDSP_ztoc without knowing the alignment
+		vDSP_zvmov(&tmpSplit, 1, &outputSplit, 2, _size/2);
+	}
+
+private:
+	size_t _size = 0;
+	bool hasSetup = false;
+	FFTSetup fftSetup;
+	int log2 = 0;
+	std::vector<float> splitReal, splitImag;
+};
+
 template<>
 struct Pow2FFT<double> {
+	static constexpr bool prefersSplit = true;
+
 	using Complex = std::complex<double>;
 
-	Pow2FFT(size_t size = 0) {
-		if (size > 0) resize(size);
+	Pow2FFT(size_t size=0) {
+		resize(size);
 	}
 	~Pow2FFT() {
 		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
@@ -161,6 +237,11 @@ struct Pow2FFT<double> {
 	void resize(size_t size) {
 		_size = size;
 		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
+		if (!size) {
+			hasSetup = false;
+			return;
+		}
+
 		log2 = std::round(std::log2(size));
 		fftSetup = vDSP_create_fftsetupD(log2, FFT_RADIX2);
 		hasSetup = true;
@@ -191,6 +272,74 @@ struct Pow2FFT<double> {
 		DSPDoubleSplitComplex inSplit{(double *)inR, (double *)inI};
 		DSPDoubleSplitComplex outSplit{outR, outI};
 		vDSP_fft_zopD(fftSetup, &inSplit, 1, &outSplit, 1, log2, kFFTDirection_Inverse);
+	}
+
+private:
+	size_t _size = 0;
+	bool hasSetup = false;
+	FFTSetupD fftSetup;
+	int log2 = 0;
+	std::vector<double> splitReal, splitImag;
+};
+
+template<>
+struct Pow2RealFFT<double> {
+	static constexpr bool prefersSplit = true;
+
+	using Complex = std::complex<double>;
+
+	Pow2RealFFT(size_t size = 0) {
+		resize(size);
+	}
+	~Pow2RealFFT() {
+		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
+	}
+
+	void resize(size_t size) {
+		_size = size;
+		if (hasSetup) vDSP_destroy_fftsetupD(fftSetup);
+		if (!size) {
+			hasSetup = false;
+			return;
+		}
+
+		splitReal.resize(size);
+		splitImag.resize(size);
+		log2 = std::log2(size);
+		fftSetup = vDSP_create_fftsetupD(log2, FFT_RADIX2);
+		hasSetup = true;
+	}
+
+	void fft(const double* input, Complex* output) {
+		double mul = 0.5f;
+		vDSP_vsmulD(input, 2, &mul, splitReal.data(), 1, _size/2);
+		vDSP_vsmulD(input + 1, 2, &mul, splitImag.data(), 1, _size/2);
+		DSPDoubleSplitComplex tmpSplit{splitReal.data(), splitImag.data()};
+		vDSP_fft_zripD(fftSetup, &tmpSplit, 1, log2, kFFTDirection_Forward);
+		vDSP_ztocD(&tmpSplit, 1, (DSPDoubleComplex *)output, 2, _size/2);
+	}
+	void fft(const double *inR, double *outR, double *outI) {
+		DSPDoubleSplitComplex outputSplit{outR, outI};
+		double mul = 0.5f;
+		vDSP_vsmulD(inR, 2, &mul, outR, 1, _size/2);
+		vDSP_vsmulD(inR + 1, 2, &mul, outI, 1, _size/2);
+		vDSP_fft_zripD(fftSetup, &outputSplit, 1, log2, kFFTDirection_Forward);
+	}
+
+	void ifft(const Complex * input, double * output) {
+		DSPDoubleSplitComplex tmpSplit{splitReal.data(), splitImag.data()};
+		vDSP_ctozD((DSPDoubleComplex*)input, 2, &tmpSplit, 1, _size/2);
+		vDSP_fft_zripD(fftSetup, &tmpSplit, 1, log2, kFFTDirection_Inverse);
+		DSPDoubleSplitComplex outputSplit{output, output + 1};
+		vDSP_zvmovD(&tmpSplit, 1, &outputSplit, 2, _size/2);
+	}
+	void ifft(const double *inR, const double *inI, double *outR) {
+		DSPDoubleSplitComplex inputSplit{(double *)inR, (double *)inI};
+		DSPDoubleSplitComplex tmpSplit{splitReal.data(), splitImag.data()};
+		vDSP_fft_zropD(fftSetup, &inputSplit, 1, &tmpSplit, 1, log2, kFFTDirection_Inverse);
+		DSPDoubleSplitComplex outputSplit{outR, outR + 1};
+		// We can't use vDSP_ztoc without knowing the alignment
+		vDSP_zvmovD(&tmpSplit, 1, &outputSplit, 2, _size/2);
 	}
 
 private:

@@ -50,9 +50,13 @@ struct RunData {
 
 	const size_t size;
 	std::vector<Sample *> reals;
+	std::vector<std::string> realNames;
 	std::vector<Sample *> positives;
+	std::vector<std::string> positiveNames;
 	std::vector<Complex *> complexes;
+	std::vector<std::string> complexNames;
 	std::vector<SplitPointer> splits;
+	std::vector<std::string> splitNames;
 
 	RunData(size_t size, int seed=0) : size(size), seed(seed) {}
 	RunData(const RunData &other) : size(other.size), seed(other.seed) {
@@ -77,7 +81,7 @@ struct RunData {
 		}
 	}
 	
-	Sample * real(size_t index) {
+	Sample * real(size_t index, std::string name="") {
 		while (index >= realVectors.size()) {
 			std::default_random_engine engine(unsigned(seed + 85221*realVectors.size()));
 			std::uniform_real_distribution<Sample> dist{-1, 1};
@@ -85,10 +89,12 @@ struct RunData {
 			realVectors.emplace_back(size + extraAlignmentItems);
 			reals.push_back(nextAligned(realVectors.back().data()));
 			for (size_t i = 0; i < size; ++i) reals.back()[i] = dist(engine);
+			realNames.push_back("r" + std::to_string(realNames.size()));
 		}
+		if (name.size()) realNames[index] = name;
 		return reals[index];
 	}
-	Sample * positive(size_t index) {
+	Sample * positive(size_t index, std::string name="") {
 		while (index >= positiveVectors.size()) {
 			std::default_random_engine engine(unsigned(seed + 578892*positiveVectors.size()));
 			std::uniform_real_distribution<Sample> dist{0, 1};
@@ -100,10 +106,12 @@ struct RunData {
 				while (v <= 0) v = dist(engine);
 				positives.back()[i] = v;
 			}
+			positiveNames.push_back("p" + std::to_string(positiveNames.size()));
 		}
+		if (name.size()) positiveNames[index] = name;
 		return positives[index];
 	}
-	Complex * complex(size_t index) {
+	Complex * complex(size_t index, std::string name="") {
 		while (index >= complexVectors.size()) {
 			std::default_random_engine engine(unsigned(seed + 13857*complexVectors.size()));
 			std::uniform_real_distribution<Sample> dist{-1, 1};
@@ -114,10 +122,12 @@ struct RunData {
 				Complex v = {dist(engine), dist(engine)};
 				complexes.back()[i] = v;
 			}
+			complexNames.push_back("c" + std::to_string(complexNames.size()));
 		}
+		if (name.size()) complexNames[index] = name;
 		return complexes[index];
 	}
-	SplitPointer split(size_t index) {
+	SplitPointer split(size_t index, std::string name="") {
 		while (index >= splits.size()) {
 			std::default_random_engine engine(unsigned(seed + 279328*splits.size()));
 			std::uniform_real_distribution<Sample> dist{-1, 1};
@@ -131,7 +141,9 @@ struct RunData {
 				real[i] = dist(engine);
 				imag[i] = dist(engine);
 			}
+			splitNames.push_back("s" + std::to_string(splitNames.size()));
 		}
+		if (name.size()) splitNames[index] = name;
 		return splits[index];
 	}
 	
@@ -195,16 +207,16 @@ struct RunData {
 	
 	void log() const {
 		for (size_t i = 0; i < reals.size(); ++i) {
-			std::cout << "\tr" << i;
+			std::cout << "\t" << realNames[i];
 		}
 		for (size_t i = 0; i < positives.size(); ++i) {
-			std::cout << "\tp" << i;
+			std::cout << "\t" << positiveNames[i];
 		}
 		for (size_t i = 0; i < complexes.size(); ++i) {
-			std::cout << "\tc" << i;
+			std::cout << "\t" << complexNames[i];
 		}
 		for (size_t i = 0; i < splits.size(); ++i) {
-			std::cout << "\ts" << i;
+			std::cout << "\t" << splitNames[i];
 		}
 		std::cout << "\n";
 		for (size_t i = 0; i < size; ++i) {
