@@ -44,17 +44,17 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 		inputLine.add(i, input[plotChannel][i]);
 	}
 
-	auto &inputPlot = figure(0, 0)(0, 0).plot(200, 200).title("input");
-	inputPlot.y.major(0);
-	auto &historyLine = inputPlot.line();
-	auto &inputTimeLine = inputPlot.line();
+//	auto &inputPlot = figure(0, 0)(0, 0).plot(200, 200).title("input");
+//	inputPlot.y.major(0);
+//	auto &historyLine = inputPlot.line();
+//	auto &inputTimeLine = inputPlot.line();
 
-	auto &outputPlot = figure(0, 0)(1, 0).plot(200, 200).title("output");
-	outputPlot.y.major(0);
-	auto &sumLine = outputPlot.line();
-	auto &outputTimeLine = outputPlot.line();
-	auto &windowProductLine = outputPlot.line();
-	outputPlot.legend(2, 1).add(sumLine, "rolling buffer").add(outputTimeLine, "current block (centred)").add(windowProductLine, "window product");
+//	auto &outputPlot = figure(0, 0)(1, 0).plot(200, 200).title("output");
+//	outputPlot.y.major(0);
+//	auto &sumLine = outputPlot.line();
+//	auto &outputTimeLine = outputPlot.line();
+//	auto &windowProductLine = outputPlot.line();
+//	outputPlot.legend(2, 1).add(sumLine, "rolling buffer").add(outputTimeLine, "current block (centred)").add(windowProductLine, "window product");
 
 	auto &windowPlot = figure(0, 0)(0, 1).plot(200, 200).title("window");
 	windowPlot.y.major(0);
@@ -91,23 +91,23 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 			}
 		}
 		for (size_t i = 0; i < blockSize; ++i) {
-			aWindowLine.add(i, stft._analysisWindow[i]);
-			sWindowLine.add(i, stft._synthesisWindow[i]);
+			aWindowLine.add(i, stft.analysisWindow()[i]);
+			sWindowLine.add(i, stft.synthesisWindow()[i]);
 		}
 		windowPlot.toFrame(debugTick());
 		
 		for (size_t c = 0; c < channels; ++c) {
 			stft.readOutput(c, 0, interval, output[c] + start);
 		}
-		for (size_t i = 0; i < blockSize; ++i) {
-			sumLine.add(i, stft.sumBuffer[i]);
-			windowProductLine.add(i, stft.sumWindowProducts[i]);
-		}
-		for (size_t i = 0; i < stft.timeBuffer.size(); ++i) {
-			outputTimeLine.add(i, stft.timeBuffer[i]);
-		}
-		sumLine.marker(stft.outputPos, 0);
-		outputPlot.toFrame(debugTick());
+//		for (size_t i = 0; i < blockSize; ++i) {
+//			sumLine.add(i, stft.sumBuffer[i]);
+//			windowProductLine.add(i, stft.sumWindowProducts[i]);
+//		}
+//		for (size_t i = 0; i < stft.timeBuffer.size(); ++i) {
+//			outputTimeLine.add(i, stft.timeBuffer[i]);
+//		}
+//		sumLine.marker(stft.outputPos, 0);
+//		outputPlot.toFrame(debugTick());
 
 		for (size_t c = 0; c < channels; ++c) {
 			stft.writeInput(c, 0, interval, input[c] + start);
@@ -116,16 +116,16 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 
 		stft.analyse();
 		
-		for (size_t i = 0; i < blockSize; ++i) {
-			historyLine.add(i, stft.inputBuffer[i]);
-		}
-		historyLine.marker(stft.inputPos, 0);
-		for (size_t i = 0; i < stft.timeBuffer.size(); ++i) {
-			inputTimeLine.add(i, stft.timeBuffer[i]);
-		}
-		inputPlot.toFrame(debugTick());
+//		for (size_t i = 0; i < blockSize; ++i) {
+//			historyLine.add(i, stft.inputBuffer[i]);
+//		}
+//		historyLine.marker(stft.inputPos, 0);
+//		for (size_t i = 0; i < stft.timeBuffer.size(); ++i) {
+//			inputTimeLine.add(i, stft.timeBuffer[i]);
+//		}
+//		inputPlot.toFrame(debugTick());
 		
-		for (size_t f = 0; f < stft._fftBins; ++f) {
+		for (size_t f = 0; f < stft.bands(); ++f) {
 			realLine.add(f, stft.spectrum(0)[f].real());
 			imagLine.add(f, stft.spectrum(0)[f].imag());
 		}
@@ -133,15 +133,15 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 		
 		stft.synthesise(interval);
 
-		for (size_t i = 0; i < blockSize; ++i) {
-			sumLine.add(i, stft.sumBuffer[i]);
-			windowProductLine.add(i, stft.sumWindowProducts[i]);
-		}
-		for (size_t i = 0; i < stft.timeBuffer.size(); ++i) {
-			outputTimeLine.add(i, stft.timeBuffer[i]);
-		}
-		sumLine.marker(stft.outputPos, 0);
-		outputPlot.toFrame(debugTick());
+//		for (size_t i = 0; i < blockSize; ++i) {
+//			sumLine.add(i, stft.sumBuffer[i]);
+//			windowProductLine.add(i, stft.sumWindowProducts[i]);
+//		}
+//		for (size_t i = 0; i < stft.timeBuffer.size(); ++i) {
+//			outputTimeLine.add(i, stft.timeBuffer[i]);
+//		}
+//		sumLine.marker(stft.outputPos, 0);
+//		outputPlot.toFrame(debugTick());
 
 		start += interval;
 

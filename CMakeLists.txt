@@ -1,5 +1,5 @@
 add_library(signalsmith-linear INTERFACE)
-set_target_properties(signalsmith-linear PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(signalsmith-linear PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 #find_package(BLAS)
 #if(BLAS_FOUND)

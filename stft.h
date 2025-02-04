@@ -63,6 +63,10 @@ struct DynamicSTFT {
 		}
 	}
 	
+	size_t bands() const {
+		return _fftBins;
+	}
+	
 	Complex * spectrum(size_t channel) {
 		return spectrumBuffer.data() + channel*_fftBins;
 	}
@@ -231,7 +235,7 @@ struct DynamicSTFT {
 	COMPAT_SPELLING(synthesise, synthesize);
 	COMPAT_SPELLING(synthesiseStep, synthesizeStep);
 	COMPAT_SPELLING(synthesiseSteps, synthesizeSteps);
-//private:
+private:
 	static constexpr Sample almostZero = 1e-30;
 
 	size_t _analysisChannels, _synthesisChannels, _inputLengthSamples, _blockSamples, _fftSamples, _fftBins;
