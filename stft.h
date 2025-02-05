@@ -53,7 +53,7 @@ struct DynamicSTFT {
 	}
 
 	void reset(Sample productWeight=1) {
-		inputPos = _inputLengthSamples;
+		inputPos = _blockSamples;
 		outputPos = 0;
 		for (auto &v : inputBuffer) v = 0;
 		for (auto &v : sumBuffer) v = 0;
@@ -70,8 +70,21 @@ struct DynamicSTFT {
 			buffer[i2] = input[i];
 		}
 	}
-	void moveInput(std::ptrdiff_t samples) {
-		inputPos = (inputPos + samples)%_blockSamples;
+	void writeInput(size_t channel, size_t length, Sample *input) {
+		writeInput(channel, 0, length, input);
+	}
+	void moveInput(std::ptrdiff_t samples, bool clearInput=false) {
+		if (clearInput) {
+			for (size_t i = 0; i < samples; ++i) {
+				size_t i2 = (inputPos + i)%_inputLengthSamples;
+				for (size_t c = 0; c < _analysisChannels; ++c) {
+					Sample *buffer = inputBuffer.data() + c*_inputLengthSamples;
+					buffer[i2] = 0;
+				}
+			}
+		}
+
+		inputPos = (inputPos + samples)%_inputLengthSamples;
 		_samplesSinceAnalysis += samples;
 	}
 	size_t samplesSinceAnalysis() const {
@@ -172,7 +185,7 @@ struct DynamicSTFT {
 		size_t channel = step/(fftSteps + 1);
 		step -= channel*(fftSteps + 1);
 
-		if (step == 0) { // extra step at start of each channel
+		if (step == 0) { // extra step at start of each channel: copy windowed input into buffer
 			_samplesSinceAnalysis = samplesInPast;
 			Sample *buffer = inputBuffer.data() + channel*_inputLengthSamples;
 			for (auto &v : timeBuffer) v = 0;
@@ -189,22 +202,15 @@ struct DynamicSTFT {
 	}
 
 	void synthesise() {
-		synthesise(_defaultInterval);
-	}
-	void synthesise(size_t samplesSincePrev) {
 		for (size_t s = 0; s < synthesiseSteps(); ++s) {
-			synthesiseStep(s, samplesSincePrev);
+			synthesiseStep(s);
 		}
 	}
 	size_t synthesiseSteps() const {
 		return _synthesisChannels*(fft.steps() + 1) + 1;
 	}
 	void synthesiseStep(size_t step) {
-		synthesiseStep(step, _defaultInterval);
-	}
-	void synthesiseStep(size_t step, size_t blockInterval) {
 		if (step == 0) { // Extra first step which adds in the effective gain for a pure analysis-synthesis cycle
-			if (blockInterval) moveOutput(blockInterval);
 			addWindowProduct();
 			return;
 		}

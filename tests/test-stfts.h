@@ -169,7 +169,7 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 		}
 		spectrumPlot.toFrame(debugTick());
 		
-		// randomise phase
+		// randomise phase (for debugging)
 		/*
 		for (size_t f = 0; f < stft.bands(); ++f) {
 			auto &v = stft.spectrum(plotChannel)[f];
@@ -178,8 +178,8 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 		}
 		*/
 
-		
-		stft.synthesise(interval);
+		stft.moveOutput(interval);
+		stft.synthesise();
 
 #ifdef STFT_DEBUG_PRIVATE
 		for (size_t i = 0; i < blockSize; ++i) {
