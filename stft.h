@@ -16,7 +16,7 @@ struct DynamicSTFT {
 	static constexpr WindowShape acg = WindowShape::acg;
 	static constexpr WindowShape kaiser = WindowShape::kaiser;
 
-	void configure(size_t inChannels, size_t outChannels, size_t blockSamples, size_t intervalSamples=0, size_t extraInputHistory=0) {
+	void configure(size_t inChannels, size_t outChannels, size_t blockSamples, size_t extraInputHistory=0, size_t intervalSamples=0) {
 		_analysisChannels = inChannels;
 		_synthesisChannels = outChannels;
 		_blockSamples = blockSamples;
@@ -34,19 +34,33 @@ struct DynamicSTFT {
 
 		_analysisWindow.resize(_blockSamples);
 		_synthesisWindow.resize(_blockSamples);
-		setInterval(intervalSamples ? intervalSamples : blockSamples/4, acg);
+		setInterval(intervalSamples ? intervalSamples : blockSamples/4, kaiser);
 
 		reset();
 	}
+	
+	size_t blockSamples() const {
+		return _blockSamples;
+	}
+	size_t defaultInterval() const {
+		return _defaultInterval;
+	}
+	size_t bands() const {
+		return _fftBins;
+	}
+	size_t latency() const {
+		return _synthesisOffset + _blockSamples - _analysisOffset;
+	}
 
-	void reset() {
+	void reset(Sample productWeight=1) {
 		inputPos = _inputLengthSamples;
 		outputPos = 0;
 		for (auto &v : inputBuffer) v = 0;
 		for (auto &v : sumBuffer) v = 0;
 		for (auto &v : spectrumBuffer) v = 0;
-		for (auto &v : sumWindowProducts) v = almostZero;
+		for (auto &v : sumWindowProducts) v = 0;
 		addWindowProduct();
+		for (auto &v : sumWindowProducts) v = v*productWeight + almostZero;
 	}
 
 	void writeInput(size_t channel, size_t offset, size_t length, Sample *input) {
@@ -58,6 +72,10 @@ struct DynamicSTFT {
 	}
 	void moveInput(std::ptrdiff_t samples) {
 		inputPos = (inputPos + samples)%_blockSamples;
+		_samplesSinceAnalysis += samples;
+	}
+	size_t samplesSinceAnalysis() const {
+		return _samplesSinceAnalysis;
 	}
 
 	void readOutput(size_t channel, size_t offset, size_t length, Sample *output) {
@@ -67,12 +85,24 @@ struct DynamicSTFT {
 			output[i] = buffer[i2]/sumWindowProducts[i2];
 		}
 	}
-	
-	size_t bands() const {
-		return _fftBins;
+	void readOutput(size_t channel, size_t length, Sample *output) {
+		return readOutput(channel, 0, length, output);
 	}
-	size_t latency() const {
-		return _synthesisOffset + _blockSamples - _analysisOffset;
+	void moveOutput(size_t samples) {
+		// Zero the output buffer as we cross it
+		for (size_t i = 0; i < samples; ++i) {
+			size_t i2 = (outputPos + i)%_blockSamples;
+			for (size_t c = 0; c < _synthesisChannels; ++c) {
+				Sample *buffer = sumBuffer.data() + c*_blockSamples;
+				buffer[i2] = 0;
+			}
+			sumWindowProducts[i2] = almostZero;
+		}
+		outputPos = (outputPos + samples)%_blockSamples;
+		_samplesSinceSynthesis += samples;
+	}
+	size_t samplesSinceSynthesis() const {
+		return _samplesSinceSynthesis;
 	}
 	
 	Complex * spectrum(size_t channel) {
@@ -143,6 +173,7 @@ struct DynamicSTFT {
 		step -= channel*(fftSteps + 1);
 
 		if (step == 0) { // extra step at start of each channel
+			_samplesSinceAnalysis = samplesInPast;
 			Sample *buffer = inputBuffer.data() + channel*_inputLengthSamples;
 			for (auto &v : timeBuffer) v = 0;
 			for (size_t i = 0; i < _blockSamples; ++i) {
@@ -171,19 +202,9 @@ struct DynamicSTFT {
 	void synthesiseStep(size_t step) {
 		synthesiseStep(step, _defaultInterval);
 	}
-	void synthesiseStep(size_t step, size_t samplesSincePrev) {
+	void synthesiseStep(size_t step, size_t blockInterval) {
 		if (step == 0) { // Extra first step which adds in the effective gain for a pure analysis-synthesis cycle
-			// Before we move the output, clear the old data
-			for (size_t i = 0; i < samplesSincePrev; ++i) {
-				size_t i2 = (outputPos + i)%_blockSamples;
-				for (size_t c = 0; c < _synthesisChannels; ++c) {
-					Sample *buffer = sumBuffer.data() + c*_blockSamples;
-					buffer[i2] = 0;
-				}
-				sumWindowProducts[i2] = almostZero;
-			}
-			outputPos = (outputPos + samplesSincePrev)%_blockSamples;
-
+			if (blockInterval) moveOutput(blockInterval);
 			addWindowProduct();
 			return;
 		}
@@ -235,8 +256,11 @@ private:
 	size_t outputPos = 0;
 	std::vector<Sample> sumBuffer;
 	std::vector<Sample> sumWindowProducts;
-
+	size_t _samplesSinceSynthesis = 0, _samplesSinceAnalysis = 0;
+	
 	void addWindowProduct() {
+		_samplesSinceSynthesis = 0;
+
 		int windowShift = int(_synthesisOffset) - int(_analysisOffset);
 		int wMin = std::max<int>(0, windowShift);
 		int wMax = std::min<int>(_blockSamples, int(_blockSamples) + windowShift);

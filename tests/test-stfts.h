@@ -177,6 +177,7 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 			v *= std::polar(Sample(1), dist(randomEngine));
 		}
 		*/
+
 		
 		stft.synthesise(interval);
 
