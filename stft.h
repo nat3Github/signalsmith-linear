@@ -191,7 +191,7 @@ struct DynamicSTFT {
 		}
 	}
 	
-	void analyse(std::ptrdiff_t samplesInPast=0) {
+	void analyse(size_t samplesInPast=0) {
 		for (size_t s = 0; s < analyseSteps(); ++s) {
 			analyseStep(s, samplesInPast);
 		}
@@ -199,7 +199,7 @@ struct DynamicSTFT {
 	size_t analyseSteps() const {
 		return _analysisChannels*(fft.steps() + 1);
 	}
-	void analyseStep(size_t step, std::ptrdiff_t samplesInPast=0) {
+	void analyseStep(size_t step, std::size_t samplesInPast=0) {
 		size_t fftSteps = fft.steps();
 		size_t channel = step/(fftSteps + 1);
 		step -= channel*(fftSteps + 1);

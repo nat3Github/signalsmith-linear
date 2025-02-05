@@ -1,4 +1,5 @@
 #include "../stft.h"
+#include "./others/dsp/spectral.h"
 
 #include "./test-runner.h"
 
@@ -241,8 +242,96 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 	}
 }
 
+void compareStfts() {
+	signalsmith::linear::DynamicSTFT<float, false, true> dynamic;
+	dynamic.configure(1, 1, 256, 0);
+	dynamic.setInterval(45, dynamic.kaiser);
+	
+	signalsmith::spectral::STFT<float> dsp(1, 256, 45);
+	dsp.setWindow(dsp.kaiser, true);
+	
+	signalsmith::linear::ModifiedRealFFT<float> mrfft(256);
+	
+	std::vector<float> input(256), output, tmp(256);
+
+	std::default_random_engine randomEngine(12345);
+	std::uniform_real_distribution<float> dist{-1, 1};
+	
+	signalsmith::plot::Figure figure;
+	auto &plot = figure(0, 0).plot();
+	plot.y.major(0);
+	auto &real1 = plot.line();
+	auto &imag1 = plot.line();
+	auto &real2 = plot.line();
+	auto &imag2 = plot.line();
+	
+	auto &inversePlot = figure(1, 0).plot();
+	auto &inverse1 = inversePlot.line(), &inverse2 = inversePlot.line();
+	auto &inputPlot = figure(1, 1).plot();
+	auto &inputLine = inputPlot.line();
+	
+	auto &windowPlot = figure(0, 1).plot();
+	auto &window1 = windowPlot.line(), &window2 = windowPlot.line();
+	for (size_t i = 0; i < 256; ++i) {
+		window1.add(i, dynamic.analysisWindow()[i]);
+		window2.add(i, dsp.window()[i]);
+	}
+
+	for (size_t r = 0; r < 10; ++r) {
+		std::rotate(input.begin(), input.begin() + 45, input.end());
+		for (size_t i = 0; i < 45; ++i) {
+			input[256 - 45 + i] = dist(randomEngine);
+		}
+
+		dynamic.writeInput(0, 45, input.data() + 256 - 45);
+		dynamic.moveInput(45);
+		dynamic.analyse();
+		
+		dsp.analyse(0, input.data());
+		
+		double e2 = 0;
+		for (size_t f = 0; f < 128; ++f) {
+			auto b1 = dynamic.spectrum(0)[f];
+			auto b2 = dsp.spectrum[0][f];
+			
+			real1.add(f, b1.real());
+			imag1.add(f, b1.imag());
+			real2.add(f, b2.real());
+			imag2.add(f, b2.imag());
+			
+			e2 += std::norm(b1 - b2);
+		}
+
+		mrfft.ifft(dynamic.spectrum(0), tmp.data());
+		for (size_t f = 0; f < 256; ++f) {
+			inverse1.add(f, tmp[f]);
+		}
+		mrfft.ifft(dsp.spectrum[0], tmp.data());
+		for (size_t f = 0; f < 256; ++f) {
+			inverse2.add(f, tmp[f]);
+		}
+		for (size_t f = 0; f < 256; ++f) {
+			inputLine.add(f, input[f]);
+		}
+
+		plot.toFrame(r*0.2);
+		inversePlot.toFrame(r*0.2);
+		inputPlot.toFrame(r*0.2);
+		
+		if (std::sqrt(e2) > 0.001) {
+			figure.write("stft-compare.svg");
+			abort();
+		}
+	}
+	
+	figure.write("stft-compare.svg");
+}
+
 void testStfts(int, double) {
 	std::cout << "STFT\n----\n";
+	
+	compareStfts();
+	
 	unsigned seed = 0;
 	for (size_t r = 0; r < 10; ++r) {
 		testStft<float, false, false>(3, 513, 1, 500, seed += 24680);
