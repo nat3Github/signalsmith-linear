@@ -210,7 +210,12 @@ struct DynamicSTFT {
 			for (auto &v : timeBuffer) v = 0;
 			for (size_t i = 0; i < _blockSamples; ++i) {
 				Sample w = _analysisWindow[i];
-				size_t ti = (i + _fftSamples - _analysisOffset)%_fftSamples;
+				size_t ti = i + _fftSamples - _analysisOffset;
+				if (ti >= _fftSamples) {
+					ti -= _fftSamples;
+				} else if (modified) {
+					w = -w;
+				}
 				size_t bi = (inputPos + i - _blockSamples - samplesInPast + _inputLengthSamples)%_inputLengthSamples;
 				timeBuffer[ti] = buffer[bi]*w;
 			}
@@ -243,7 +248,12 @@ struct DynamicSTFT {
 			Sample *buffer = sumBuffer.data() + channel*_blockSamples;
 			for (size_t i = 0; i < _blockSamples; ++i) {
 				Sample w = _synthesisWindow[i];
-				size_t ti = (i + _fftSamples - _synthesisOffset)%_fftSamples;
+				size_t ti = i + _fftSamples - _synthesisOffset;
+				if (ti >= _fftSamples) {
+					ti -= _fftSamples;
+				} else if (modified) {
+					w = -w;
+				}
 				size_t bi = (outputPos + i)%_blockSamples;
 				buffer[bi] += timeBuffer[ti]*w;
 			}
