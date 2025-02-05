@@ -31,7 +31,16 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 	}
 	
 	signalsmith::linear::DynamicSTFT<Sample> stft;
-	stft.configure(channels, channels, blockSize);
+	size_t extraInputHistory = 0, extraInputLatency = 0;
+	{
+		std::uniform_real_distribution<double> dist{0, 1};
+		if (dist(randomEngine) > 0.5) {
+			extraInputHistory = dist(randomEngine)*blockSize*2;
+			extraInputLatency = std::round(dist(randomEngine)*extraInputHistory);
+		}
+	}
+	size_t defaultInterval = std::max<size_t>(intervalDist(randomEngine), blockSize/16);
+	stft.configure(channels, channels, blockSize, extraInputHistory, defaultInterval);
 	
 	const size_t plotChannel = 0;
 	
@@ -99,7 +108,9 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 		}
 	}
 	stft.reset(); // The initial window weights depend on the offsets
-	
+
+	size_t totalLatency = stft.latency() + extraInputLatency;
+
 	size_t start = 0;
 	while (start + blockSize < length) {
 		size_t interval = intervalDist(randomEngine);
@@ -150,7 +161,7 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 		}
 		stft.moveInput(interval);
 
-		stft.analyse();
+		stft.analyse(extraInputLatency);
 
 #ifdef STFT_DEBUG_PRIVATE
 		for (size_t i = 0; i < blockSize; ++i) {
@@ -197,7 +208,7 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 
 		for (size_t i = 0; i < start; ++i) {
 			outputLine.add(i, output[plotChannel][i]);
-			Sample v = (i < stft.latency()) ? Sample(0) : input[plotChannel][i - stft.latency()];
+			Sample v = (i < totalLatency) ? Sample(0) : input[plotChannel][i - totalLatency];
 			diffLine.add(i, output[plotChannel][i] - v);
 		}
 		outputLine.toFrame(debugTick());
@@ -205,9 +216,9 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 	}
 	
 	double error = 0;
-	for (size_t i = 0; i + stft.latency() < start; ++i) {
+	for (size_t i = 0; i + totalLatency < start; ++i) {
 		for (size_t c = 0; c < channels; ++c) {
-			error += std::abs(output[c][i + stft.latency()] - input[c][i]);
+			error += std::abs(output[c][i + totalLatency] - input[c][i]);
 		}
 	}
 	figure.loopFrame(debugTick());

@@ -34,7 +34,7 @@ struct DynamicSTFT {
 
 		_analysisWindow.resize(_blockSamples);
 		_synthesisWindow.resize(_blockSamples);
-		setInterval(intervalSamples ? intervalSamples : blockSamples/4, kaiser);
+		setInterval(intervalSamples ? intervalSamples : blockSamples/4, acg);
 
 		reset();
 	}
@@ -42,14 +42,29 @@ struct DynamicSTFT {
 	size_t blockSamples() const {
 		return _blockSamples;
 	}
+	size_t fftSamples() const {
+		return _fftSamples;
+	}
 	size_t defaultInterval() const {
 		return _defaultInterval;
 	}
 	size_t bands() const {
 		return _fftBins;
 	}
+	size_t analysisLatency() const {
+		return _blockSamples - _analysisOffset;
+	}
+	size_t synthesisLatency() const {
+		return _synthesisOffset;
+	}
 	size_t latency() const {
-		return _synthesisOffset + _blockSamples - _analysisOffset;
+		return synthesisLatency() + analysisLatency();
+	}
+	Sample binToFreq(Sample b) const {
+		return (modified ? b + Sample(0.5) : b)/_fftSamples;
+	}
+	Sample freqToBin(Sample f) const {
+		return modified ? f*_fftSamples - Sample(0.5) : f*_fftSamples;
 	}
 
 	void reset(Sample productWeight=1) {
@@ -60,7 +75,11 @@ struct DynamicSTFT {
 		for (auto &v : spectrumBuffer) v = 0;
 		for (auto &v : sumWindowProducts) v = 0;
 		addWindowProduct();
+		for (int i = int(_blockSamples) - int(_defaultInterval); i >= 0; --i) {
+			sumWindowProducts[i] += sumWindowProducts[i + _defaultInterval];
+		}
 		for (auto &v : sumWindowProducts) v = v*productWeight + almostZero;
+		moveOutput(_defaultInterval); // ready for first block immediately
 	}
 
 	void writeInput(size_t channel, size_t offset, size_t length, Sample *input) {
@@ -73,7 +92,7 @@ struct DynamicSTFT {
 	void writeInput(size_t channel, size_t length, Sample *input) {
 		writeInput(channel, 0, length, input);
 	}
-	void moveInput(std::ptrdiff_t samples, bool clearInput=false) {
+	void moveInput(size_t samples, bool clearInput=false) {
 		if (clearInput) {
 			for (size_t i = 0; i < samples; ++i) {
 				size_t i2 = (inputPos + i)%_inputLengthSamples;

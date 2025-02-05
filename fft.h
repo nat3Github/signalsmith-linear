@@ -332,27 +332,25 @@ struct Pow2FFT {
 	}
 	
 	void resize(size_t size) {
-		_size = size;
 		simpleFFT.resize(size);
 		tmp.resize(size);
 	}
 	
 	void fft(const Complex *time, Complex *freq) {
-		simpleFFT.fft(_size, time, freq);
+		simpleFFT.fft(time, freq);
 	}
 	void fft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
-		simpleFFT.fft(_size, inR, inI, outR, outI);
+		simpleFFT.fft(inR, inI, outR, outI);
 	}
 
-	void ifft(const Complex *freq, Sample *time) {
-		simpleFFT.ifft(_size, freq, time);
+	void ifft(const Complex *freq, Complex *time) {
+		simpleFFT.ifft(freq, time);
 	}
 	void ifft(const Sample *inR, const Sample *inI, Sample *outR, Sample *outI) {
-		simpleFFT.ifft(_size, inR, inI, outR, outI);
+		simpleFFT.ifft(inR, inI, outR, outI);
 	}
 
 private:
-	size_t _size;
 	std::vector<Complex> tmp;
 	SimpleFFT<Sample> simpleFFT;
 };
