@@ -181,7 +181,7 @@ struct DynamicSTFT {
 			auto window = ApproximateConfinedGaussian::withBandwidth(double(_blockSamples)/defaultInterval);
 			window.fill(_analysisWindow, _blockSamples);
 		} else if (windowShape == kaiser) {
-			auto window = Kaiser::withBandwidth(double(_blockSamples)/defaultInterval);
+			auto window = Kaiser::withBandwidth(double(_blockSamples)/defaultInterval, true);
 			window.fill(_analysisWindow,  _blockSamples);
 		}
 
