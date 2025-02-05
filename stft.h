@@ -12,6 +12,10 @@ struct DynamicSTFT {
 
 	using Complex = std::complex<Sample>;
 
+	enum class WindowShape {ignore, acg, kaiser};
+	static constexpr WindowShape acg = WindowShape::acg;
+	static constexpr WindowShape kaiser = WindowShape::kaiser;
+
 	void configure(size_t inChannels, size_t outChannels, size_t blockSamples, size_t intervalSamples=0, size_t extraInputHistory=0) {
 		_analysisChannels = inChannels;
 		_synthesisChannels = outChannels;
@@ -30,7 +34,7 @@ struct DynamicSTFT {
 
 		_analysisWindow.resize(_blockSamples);
 		_synthesisWindow.resize(_blockSamples);
-		setInterval(intervalSamples ? intervalSamples : blockSamples/4);
+		setInterval(intervalSamples ? intervalSamples : blockSamples/4, acg);
 
 		reset();
 	}
@@ -105,37 +109,23 @@ struct DynamicSTFT {
 		return _synthesisOffset;
 	}
 	
-	void setInterval(size_t defaultInterval, bool updateWindows=true) {
+	void setInterval(size_t defaultInterval, WindowShape windowShape=WindowShape::ignore) {
 		_defaultInterval = defaultInterval;
-		if (!updateWindows) return;
+		if (windowShape == WindowShape::ignore) return;
 		
 		_analysisOffset = _synthesisOffset = _blockSamples/2;
-		
-		// ACG window with heuristically-good bandwidth (copied from DSP library)
-		double gaussianFactor = -0.695*_blockSamples/defaultInterval;
-		auto gaussian = [&](double x){
-			return std::exp(x*x*gaussianFactor);
-		};
-		
-		double invSize = 1.0/_blockSamples;
-		double offsetScale = gaussian(1)/(gaussian(3) + gaussian(1));
-		double norm = 1/(gaussian(0) - 2*offsetScale*(gaussian(2)));
-		for (auto &v : _synthesisWindow) v = 0;
-		for (size_t i = 0; i < _blockSamples; ++i) {
-			double r = (2*i + 1)*invSize - 1;
-			_analysisWindow[i] = _synthesisWindow[i] = norm*(gaussian(r) - offsetScale*(gaussian(r - 2) + gaussian(r + 2)));
+
+		if (windowShape == acg) {
+			auto window = ApproximateConfinedGaussian::withBandwidth(double(_blockSamples)/defaultInterval);
+			window.fill(_analysisWindow, _blockSamples);
+		} else if (windowShape == kaiser) {
+			auto window = Kaiser::withBandwidth(double(_blockSamples)/defaultInterval);
+			window.fill(_analysisWindow,  _blockSamples);
 		}
-		// Force perfect reconstruction
-		for (size_t i = 0; i < defaultInterval; ++i) {
-			Sample sum = 0;
-			for (size_t i2 = i; i2 < _blockSamples; i2 += defaultInterval) {
-				sum += _analysisWindow[i2]*_synthesisWindow[i2];
-			}
-			Sample factor = 1/std::sqrt(sum);
-			for (size_t i2 = i; i2 < _blockSamples; i2 += defaultInterval) {
-				_analysisWindow[i2] *= factor;
-				_synthesisWindow[i2] *= factor;
-			}
+
+		forcePerfectReconstruction(_analysisWindow, _blockSamples, _defaultInterval);
+		for (size_t i = 0; i < _blockSamples; ++i) {
+			_synthesisWindow[i] = _analysisWindow[i];
 		}
 	}
 	
@@ -227,8 +217,7 @@ struct DynamicSTFT {
 	COMPAT_SPELLING(synthesise, synthesize);
 	COMPAT_SPELLING(synthesiseStep, synthesizeStep);
 	COMPAT_SPELLING(synthesiseSteps, synthesizeSteps);
-#define STFT_DEBUG_PRIVATE
-//private:
+private:
 	static constexpr Sample almostZero = 1e-30;
 
 	size_t _analysisChannels, _synthesisChannels, _inputLengthSamples, _blockSamples, _fftSamples, _fftBins;
@@ -258,6 +247,160 @@ struct DynamicSTFT {
 			Sample ws = _synthesisWindow[i];
 			size_t bi = (outputPos + i)%_blockSamples;
 			windowProduct[bi] += wa*ws*_fftSamples;
+		}
+	}
+	
+	// Copied from DSP library `windows.h`
+	class Kaiser {
+		inline static double bessel0(double x) {
+			const double significanceLimit = 1e-4;
+			double result = 0;
+			double term = 1;
+			double m = 0;
+			while (term > significanceLimit) {
+				result += term;
+				++m;
+				term *= (x*x)/(4*m*m);
+			}
+
+			return result;
+		}
+		double beta;
+		double invB0;
+		
+		static double heuristicBandwidth(double bandwidth) {
+			return bandwidth + 8/((bandwidth + 3)*(bandwidth + 3)) + 0.25*std::max(3 - bandwidth, 0.0);
+		}
+	public:
+		Kaiser(double beta) : beta(beta), invB0(1/bessel0(beta)) {}
+
+		static Kaiser withBandwidth(double bandwidth, bool heuristicOptimal=false) {
+			return Kaiser(bandwidthToBeta(bandwidth, heuristicOptimal));
+		}
+		static double bandwidthToBeta(double bandwidth, bool heuristicOptimal=false) {
+			if (heuristicOptimal) { // Heuristic based on numerical search
+				bandwidth = heuristicBandwidth(bandwidth);
+			}
+			bandwidth = std::max(bandwidth, 2.0);
+			double alpha = std::sqrt(bandwidth*bandwidth*0.25 - 1);
+			return alpha*M_PI;
+		}
+		
+		static double betaToBandwidth(double beta) {
+			double alpha = beta*(1.0/M_PI);
+			return 2*std::sqrt(alpha*alpha + 1);
+		}
+		static double bandwidthToEnergyDb(double bandwidth, bool heuristicOptimal=false) {
+			// Horrible heuristic fits
+			if (heuristicOptimal) {
+				if (bandwidth < 3) bandwidth += (3 - bandwidth)*0.5;
+				return 12.9 + -3/(bandwidth + 0.4) - 13.4*bandwidth + (bandwidth < 3)*-9.6*(bandwidth - 3);
+			}
+			return 10.5 + 15/(bandwidth + 0.4) - 13.25*bandwidth + (bandwidth < 2)*13*(bandwidth - 2);
+		}
+		static double energyDbToBandwidth(double energyDb, bool heuristicOptimal=false) {
+			double bw = 1;
+			while (bw < 20 && bandwidthToEnergyDb(bw, heuristicOptimal) > energyDb) {
+				bw *= 2;
+			}
+			double step = bw/2;
+			while (step > 0.0001) {
+				if (bandwidthToEnergyDb(bw, heuristicOptimal) > energyDb) {
+					bw += step;
+				} else {
+					bw -= step;
+				}
+				step *= 0.5;
+			}
+			return bw;
+		}
+		static double bandwidthToPeakDb(double bandwidth, bool heuristicOptimal=false) {
+			// Horrible heuristic fits
+			if (heuristicOptimal) {
+				return 14.2 - 20/(bandwidth + 1) - 13*bandwidth + (bandwidth < 3)*-6*(bandwidth - 3) + (bandwidth < 2.25)*5.8*(bandwidth - 2.25);
+			}
+			return 10 + 8/(bandwidth + 2) - 12.75*bandwidth + (bandwidth < 2)*4*(bandwidth - 2);
+		}
+		static double peakDbToBandwidth(double peakDb, bool heuristicOptimal=false) {
+			double bw = 1;
+			while (bw < 20 && bandwidthToPeakDb(bw, heuristicOptimal) > peakDb) {
+				bw *= 2;
+			}
+			double step = bw/2;
+			while (step > 0.0001) {
+				if (bandwidthToPeakDb(bw, heuristicOptimal) > peakDb) {
+					bw += step;
+				} else {
+					bw -= step;
+				}
+				step *= 0.5;
+			}
+			return bw;
+		}
+
+		static double bandwidthToEnbw(double bandwidth, bool heuristicOptimal=false) {
+			if (heuristicOptimal) bandwidth = heuristicBandwidth(bandwidth);
+			double b2 = std::max<double>(bandwidth - 2, 0);
+			return 1 + b2*(0.2 + b2*(-0.005 + b2*(-0.000005 + b2*0.0000022)));
+		}
+
+		double operator ()(double unit) {
+			double r = 2*unit - 1;
+			double arg = std::sqrt(1 - r*r);
+			return bessel0(beta*arg)*invB0;
+		}
+	
+		template<typename Data>
+		void fill(Data &&data, int size) const {
+			double invSize = 1.0/size;
+			for (int i = 0; i < size; ++i) {
+				double r = (2*i + 1)*invSize - 1;
+				double arg = std::sqrt(1 - r*r);
+				data[i] = bessel0(beta*arg)*invB0;
+			}
+		}
+	};
+
+	class ApproximateConfinedGaussian {
+		double gaussianFactor;
+		
+		double gaussian(double x) const {
+			return std::exp(-x*x*gaussianFactor);
+		}
+	public:
+		static double bandwidthToSigma(double bandwidth) {
+			return 0.3/std::sqrt(bandwidth);
+		}
+		static ApproximateConfinedGaussian withBandwidth(double bandwidth) {
+			return ApproximateConfinedGaussian(bandwidthToSigma(bandwidth));
+		}
+
+		ApproximateConfinedGaussian(double sigma) : gaussianFactor(0.0625/(sigma*sigma)) {}
+	
+		/// Fills an arbitrary container
+		template<typename Data>
+		void fill(Data &&data, int size) const {
+			double invSize = 1.0/size;
+			double offsetScale = gaussian(1)/(gaussian(3) + gaussian(-1));
+			double norm = 1/(gaussian(0) - 2*offsetScale*(gaussian(2)));
+			for (int i = 0; i < size; ++i) {
+				double r = (2*i + 1)*invSize - 1;
+				data[i] = norm*(gaussian(r) - offsetScale*(gaussian(r - 2) + gaussian(r + 2)));
+			}
+		}
+	};
+
+	template<typename Data>
+	void forcePerfectReconstruction(Data &&data, int windowLength, int interval) {
+		for (int i = 0; i < interval; ++i) {
+			double sum2 = 0;
+			for (int index = i; index < windowLength; index += interval) {
+				sum2 += data[index]*data[index];
+			}
+			double factor = 1/std::sqrt(sum2);
+			for (int index = i; index < windowLength; index += interval) {
+				data[index] *= factor;
+			}
 		}
 	}
 };
