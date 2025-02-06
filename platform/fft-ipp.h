@@ -27,23 +27,48 @@ public:
         IppStatus status;
         const auto order = static_cast<int>(std::log2(size));
         Ipp8u* initBuffer{ nullptr };
-        int fftSpecSize, fftInitBuffSize, fftWorkBuffSize;
-        status = ippsFFTGetSize_C_32fc(order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, &fftSpecSize, &fftInitBuffSize, &fftWorkBuffSize);
-        checkStatus(status);
-        specBuffer = ippsMalloc_8u(fftSpecSize);
-        spec = (IppsFFTSpec_C_32fc*)specBuffer;
-        if(fftInitBuffSize != 0) {
-            initBuffer = ippsMalloc_8u(fftInitBuffSize);
-        }
-        if(fftWorkBuffSize != 0) {
-            workBuffer = ippsMalloc_8u(fftWorkBuffSize);
-        }
-        status = ippsFFTInit_C_32fc(&spec, order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, specBuffer, initBuffer);
-        checkStatus(status);
-        if(initBuffer) {
-            ippsFree(initBuffer);
+
+        int maxWorkingSize = 0;
+
+        {
+              int fftSpecSize, fftInitBuffSize, fftWorkBuffSize;
+              status = ippsFFTGetSize_C_32fc(order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, &fftSpecSize, &fftInitBuffSize, &fftWorkBuffSize);
+              checkStatus(status);
+              maxWorkingSize = std::max(maxWorkingSize, fftWorkBuffSize);
+              specBuffer = ippsMalloc_8u(fftSpecSize);
+              spec = (IppsFFTSpec_C_32fc*)specBuffer;
+              if (fftInitBuffSize != 0) {
+                    initBuffer = ippsMalloc_8u(fftInitBuffSize);
+              }
+              status = ippsFFTInit_C_32fc(&spec, order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, specBuffer, initBuffer);
+
+              checkStatus(status);
+              if (initBuffer) {
+                    ippsFree(initBuffer);
+              }
         }
 
+        {
+              int fftSpecSize, fftInitBuffSize, fftWorkBuffSize;
+              status = ippsFFTGetSize_C_32f(order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, &fftSpecSize, &fftInitBuffSize, &fftWorkBuffSize);
+              checkStatus(status);
+              maxWorkingSize = std::max(maxWorkingSize, fftWorkBuffSize);
+              specSplitBuffer = ippsMalloc_8u(fftSpecSize);
+              specSplit = (IppsFFTSpec_C_32f*)specSplitBuffer;
+              if (fftInitBuffSize != 0) {
+                    initBuffer = ippsMalloc_8u(fftInitBuffSize);
+              }
+              status = ippsFFTInit_C_32f(&specSplit, order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, specSplitBuffer, initBuffer);
+
+              checkStatus(status);
+              if (initBuffer) {
+                    ippsFree(initBuffer);
+              }
+        }
+
+        if(maxWorkingSize != 0) {
+              workBuffer = ippsMalloc_8u(maxWorkingSize);
+        }
     }
 
     ~State() noexcept {
@@ -56,7 +81,9 @@ public:
     }
 
     IppsFFTSpec_C_32fc *spec{nullptr};
+    IppsFFTSpec_C_32f *specSplit{nullptr};
     Ipp8u *specBuffer{nullptr};
+    Ipp8u *specSplitBuffer{nullptr};
     Ipp8u *workBuffer{nullptr};
 
 };
@@ -67,35 +94,66 @@ struct State<double> {
         IppStatus status;
         const auto order = static_cast<int>(std::log2(size));
         Ipp8u* initBuffer{ nullptr };
-        int fftSpecSize, fftInitBuffSize, fftWorkBuffSize;
-        status = ippsFFTGetSize_C_64fc(order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, &fftSpecSize, &fftInitBuffSize, &fftWorkBuffSize);
-        checkStatus(status);
-        specBuffer = ippsMalloc_8u(fftSpecSize);
-        spec = (IppsFFTSpec_C_64fc*)specBuffer;
-        if(fftInitBuffSize != 0) {
-            initBuffer = ippsMalloc_8u(fftInitBuffSize);
+
+        int maxWorkingSize = 0;
+
+        {
+              int fftSpecSize, fftInitBuffSize, fftWorkBuffSize;
+              status = ippsFFTGetSize_C_64fc(order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, &fftSpecSize, &fftInitBuffSize, &fftWorkBuffSize);
+              checkStatus(status);
+              maxWorkingSize = std::max(maxWorkingSize, fftWorkBuffSize);
+              specBuffer = ippsMalloc_8u(fftSpecSize);
+              spec = (IppsFFTSpec_C_64fc*)specBuffer;
+              if (fftInitBuffSize != 0) {
+                    initBuffer = ippsMalloc_8u(fftInitBuffSize);
+              }
+              status = ippsFFTInit_C_64fc(&spec, order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, specBuffer, initBuffer);
+
+              checkStatus(status);
+              if (initBuffer) {
+                    ippsFree(initBuffer);
+              }
         }
-        if(fftWorkBuffSize != 0) {
-            workBuffer = ippsMalloc_8u(fftWorkBuffSize);
+
+        {
+              int fftSpecSize, fftInitBuffSize, fftWorkBuffSize;
+              status = ippsFFTGetSize_C_64f(order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, &fftSpecSize, &fftInitBuffSize, &fftWorkBuffSize);
+              checkStatus(status);
+              maxWorkingSize = std::max(maxWorkingSize, fftWorkBuffSize);
+              specSplitBuffer = ippsMalloc_8u(fftSpecSize);
+              specSplit = (IppsFFTSpec_C_64f*)specSplitBuffer;
+              if (fftInitBuffSize != 0) {
+                    initBuffer = ippsMalloc_8u(fftInitBuffSize);
+              }
+              status = ippsFFTInit_C_64f(&specSplit, order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, specSplitBuffer, initBuffer);
+
+              checkStatus(status);
+              if (initBuffer) {
+                    ippsFree(initBuffer);
+              }
         }
-        status = ippsFFTInit_C_64fc(&spec, order, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, specBuffer, initBuffer);
-        checkStatus(status);
-        if(initBuffer) {
-            ippsFree(initBuffer);
+
+        if(maxWorkingSize != 0) {
+              workBuffer = ippsMalloc_8u(maxWorkingSize);
         }
     }
 
     ~State() noexcept {
-        if(specBuffer) {
-            ippsFree(specBuffer);
-        }
-        if(workBuffer) {
+          if(specBuffer) {
+                ippsFree(specBuffer);
+          }
+          if(specSplitBuffer) {
+                ippsFree(specSplitBuffer);
+          }
+          if(workBuffer) {
             ippsFree(workBuffer);
         }
     }
 
     IppsFFTSpec_C_64fc *spec{nullptr};
+    IppsFFTSpec_C_64f *specSplit{nullptr};
     Ipp8u *specBuffer{nullptr};
+    Ipp8u *specSplitBuffer{nullptr};
     Ipp8u *workBuffer{nullptr};
 
 };
@@ -103,8 +161,9 @@ struct State<double> {
 
 template<>
 struct Pow2FFT<float> {
-public:
-    Pow2FFT(size_t size = 0) {
+      static constexpr bool prefersSplit = true; // whether this FFT implementation is faster when given split-complex inputs
+
+      Pow2FFT(size_t size = 0) {
         if(size > 0) {
             resize(size);
         }
@@ -115,17 +174,27 @@ public:
     }
 
     void fft(const std::complex<float>* input, std::complex<float>* output) {
-        auto* ippComplexIn = reinterpret_cast<const Ipp32fc*>(input);
-        auto* ippComplexOut = reinterpret_cast<Ipp32fc*>(output);
-        const auto status = ippsFFTFwd_CToC_32fc(ippComplexIn, ippComplexOut, m_state->spec, m_state->workBuffer);
-        checkStatus(status);
+          auto* ippComplexIn = reinterpret_cast<const Ipp32fc*>(input);
+          auto* ippComplexOut = reinterpret_cast<Ipp32fc*>(output);
+          const auto status = ippsFFTFwd_CToC_32fc(ippComplexIn, ippComplexOut, m_state->spec, m_state->workBuffer);
+          checkStatus(status);
+    }
+
+    void fft(const float *inR, const float *inI, float *outR, float *outI) {
+          const auto status = ippsFFTFwd_CToC_32f((const Ipp32f*)inR, (const Ipp32f*)inI, (Ipp32f*)outR, (Ipp32f*)outI, m_state->specSplit, m_state->workBuffer);
+          checkStatus(status);
     }
 
     void ifft(const std::complex<float>* input, std::complex<float>* output) {
-        auto* ippComplexIn = reinterpret_cast<const Ipp32fc*>(input);
-        auto* ippComplexOut = reinterpret_cast<Ipp32fc*>(output);
-        const auto status = ippsFFTInv_CToC_32fc(ippComplexIn, ippComplexOut, m_state->spec, m_state->workBuffer);
-        checkStatus(status);
+          auto* ippComplexIn = reinterpret_cast<const Ipp32fc*>(input);
+          auto* ippComplexOut = reinterpret_cast<Ipp32fc*>(output);
+          const auto status = ippsFFTInv_CToC_32fc(ippComplexIn, ippComplexOut, m_state->spec, m_state->workBuffer);
+          checkStatus(status);
+    }
+
+    void ifft(const float *inR, const float *inI, float *outR, float *outI) {
+          const auto status = ippsFFTInv_CToC_32f((const Ipp32f*)inR, (const Ipp32f*)inI, (Ipp32f*)outR, (Ipp32f*)outI, m_state->specSplit, m_state->workBuffer);
+          checkStatus(status);
     }
 
 private:
@@ -134,8 +203,9 @@ private:
 
 template<>
 struct Pow2FFT<double> {
-public:
-    Pow2FFT(size_t size = 0) {
+      static constexpr bool prefersSplit = true; // whether this FFT implementation is faster when given split-complex inputs
+      
+      Pow2FFT(size_t size = 0) {
         if(size > 0) {
             resize(size);
         }
@@ -152,11 +222,21 @@ public:
         checkStatus(status);
     }
 
+    void fft(const double *inR, const double *inI, double *outR, double *outI) {
+          const auto status = ippsFFTFwd_CToC_64f((const Ipp64f*)inR, (const Ipp64f*)inI, (Ipp64f*)outR, (Ipp64f*)outI, m_state->specSplit, m_state->workBuffer);
+          checkStatus(status);
+    }
+
     void ifft(const std::complex<double>* input, std::complex<double>* output) {
         auto* ippComplexIn = reinterpret_cast<const Ipp64fc*>(input);
         auto* ippComplexOut = reinterpret_cast<Ipp64fc*>(output);
         const auto status = ippsFFTInv_CToC_64fc(ippComplexIn, ippComplexOut, m_state->spec, m_state->workBuffer);
         checkStatus(status);
+    }
+
+    void ifft(const double *inR, const double *inI, double *outR, double *outI) {
+          const auto status = ippsFFTInv_CToC_64f((const Ipp64f*)inR, (const Ipp64f*)inI, (Ipp64f*)outR, (Ipp64f*)outI, m_state->specSplit, m_state->workBuffer);
+          checkStatus(status);
     }
 
 private:

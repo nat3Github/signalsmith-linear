@@ -75,7 +75,7 @@ struct DynamicSTFT {
 		for (auto &v : spectrumBuffer) v = 0;
 		for (auto &v : sumWindowProducts) v = 0;
 		addWindowProduct();
-		for (int i = int(_blockSamples) - int(_defaultInterval); i >= 0; --i) {
+		for (int i = int(_blockSamples) - int(_defaultInterval) - 1; i >= 0; --i) {
 			sumWindowProducts[i] += sumWindowProducts[i + _defaultInterval];
 		}
 		for (auto &v : sumWindowProducts) v = v*productWeight + almostZero;

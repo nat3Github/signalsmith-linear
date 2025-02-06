@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.24)
 project(linear-tests VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 11)
 
+# MSVC needs an extra flag to handle this many templates
+if (MSVC)
+	add_compile_options(/bigobj)
+	#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
+endif()
+
 include(FetchContent)
 
 # DSP library

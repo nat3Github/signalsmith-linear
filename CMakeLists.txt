@@ -1,5 +1,13 @@
+cmake_minimum_required(VERSION 3.24)
+
 add_library(signalsmith-linear INTERFACE)
 set_target_properties(signalsmith-linear PROPERTIES INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# MSVC needs an extra flag to handle this many templates
+if (MSVC)
+	add_compile_options(/bigobj)
+	#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
+endif()
 
 #find_package(BLAS)
 #if(BLAS_FOUND)

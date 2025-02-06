@@ -5,12 +5,17 @@
 #	error Apple Clang 16.0.0 generates incorrect SIMD for ARM. If you HAVE to use this version of Clang, turn off -ffast-math.
 #endif
 
+#ifndef M_PI
+#	define M_PI 3.14159265358979323846
+#endif
+
 #include <cmath>
 #include <cassert>
 #include <complex>
 #include <array>
 #include <vector>
 #include <type_traits>
+#include <functional>
 
 namespace signalsmith { namespace linear {
 
