@@ -31,21 +31,6 @@ namespace _impl {
 		DSPSplitComplex cSplit = {(float *)cr, (float *)ci};
 		vDSP_zvmul(&cSplit, 1, &bSplit, 1, &aSplit, 1, size, -1);
 	}
-
-	/* not faster, because of the strides
-	template<>
-	void strideCopy<float>(const std::complex<float> *a, size_t aStride, std::complex<float> *b, size_t size) {
-		DSPSplitComplex aSplit = {(float *)a, (float *)a + 1};
-		DSPSplitComplex bSplit = {(float *)b, (float *)b + 1};
-		vDSP_zvmov(&aSplit, 2*aStride, &bSplit, 2, size);
-	}
-	*/
-	template<>
-	void strideCopy<float>(const float *ar, const float *ai, size_t aStride, float *br, float *bi, size_t size) {
-		DSPSplitComplex aSplit = {(float *)ar, (float *)ai};
-		DSPSplitComplex bSplit = {br, bi};
-		vDSP_zvmov(&aSplit, aStride, &bSplit, 1, size);
-	}
 	
 	// doubles
 	template<>
@@ -75,21 +60,6 @@ namespace _impl {
 		DSPDoubleSplitComplex bSplit = {(double *)br, (double *)bi};
 		DSPDoubleSplitComplex cSplit = {(double *)cr, (double *)ci};
 		vDSP_zvmulD(&cSplit, 1, &bSplit, 1, &aSplit, 1, size, -1);
-	}
-
-	/* not faster, because of the strides
-	template<>
-	void strideCopy<double>(const std::complex<double> *a, size_t aStride, std::complex<double> *b, size_t size) {
-		DSPDoubleSplitComplex aSplit = {(double *)a, (double *)a + 1};
-		DSPDoubleSplitComplex bSplit = {(double *)b, (double *)b + 1};
-		vDSP_zvmovD(&aSplit, 2*aStride, &bSplit, 2, size);
-	}
-	*/
-	template<>
-	void strideCopy<double>(const double *ar, const double *ai, size_t aStride, double *br, double *bi, size_t size) {
-		DSPDoubleSplitComplex aSplit = {(double *)ar, (double *)ai};
-		DSPDoubleSplitComplex bSplit = {br, bi};
-		vDSP_zvmovD(&aSplit, aStride, &bSplit, 1, size);
 	}
 }
 

@@ -2,6 +2,8 @@
 
 #include "./test-runner.h"
 
+//#define INCLUDE_UNSPLIT_SPLITFFT
+
 // ---------- complex wrappers
 
 template<class Sample>

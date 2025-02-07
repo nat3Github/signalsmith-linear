@@ -96,20 +96,6 @@ namespace _impl {
 			}
 		}
 	}
-
-	template<class V>
-	void strideCopy(const std::complex<V> *a, size_t aStride, std::complex<V> *b, size_t size) {
-		for (size_t i = 0; i < size; ++i) {
-			b[i] = a[i*aStride];
-		}
-	}
-	template<class V>
-	void strideCopy(const V *ar, const V *ai, size_t aStride, V *br, V *bi, size_t size) {
-		for (size_t i = 0; i < size; ++i) {
-			br[i] = ar[i*aStride];
-			bi[i] = ai[i*aStride];
-		}
-	}
 }
 
 /// Extremely simple and portable power-of-2 FFT
