@@ -983,7 +983,6 @@ struct RealFFT {
 					evenI.real()*twiddle.real() - evenI.imag()*twiddle.imag(),
 					evenI.imag()*twiddle.real() + evenI.real()*twiddle.imag()
 				};
-				evenRotMinusI = evenI*twiddle;
 
 				freq[i] = odd + evenRotMinusI;
 				freq[conjI] = {odd.real() - evenRotMinusI.real(), evenRotMinusI.imag() - odd.imag()};

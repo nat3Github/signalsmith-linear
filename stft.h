@@ -249,7 +249,8 @@ struct DynamicSTFT {
 			for (size_t i = 0; i < chunk1; ++i) {
 				Sample w = modified ? -_analysisWindow[i] : _analysisWindow[i];
 				size_t ti = i + (_fftSamples - _analysisOffset);
-				timeBuffer[ti] = buffer[offsetPos + i]*w;
+				size_t bi = offsetPos + i;
+				timeBuffer[ti] = buffer[bi]*w;
 			}
 			for (size_t i = chunk1; i < _analysisOffset; ++i) {
 				Sample w = modified ? -_analysisWindow[i] : _analysisWindow[i];
