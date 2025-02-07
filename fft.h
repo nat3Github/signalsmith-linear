@@ -688,9 +688,16 @@ private:
 		const Complex tw1{Sample(-0.5), Sample(-std::sqrt(0.75)*(inverse ? -1 : 1))};
 		for (size_t i = 0; i < innerSize; ++i) {
 			Complex a = f0[i], b = f1[i], c = f2[i];
-			f0[i] = a + b + c;
-			f1[i] = a + b*tw1 + c*std::conj(tw1);
-			f2[i] = a + b*std::conj(tw1) + c*tw1;
+			Complex bc0 = b + c, bc1 = b - c;
+			f0[i] = a + bc0;
+			f1[i] = {
+				a.real() + bc0.real()*tw1.real() - bc1.imag()*tw1.imag(),
+				a.imag() + bc0.imag()*tw1.real() + bc1.real()*tw1.imag()
+			};
+			f2[i] = {
+				a.real() + bc0.real()*tw1.real() + bc1.imag()*tw1.imag(),
+				a.imag() + bc0.imag()*tw1.real() - bc1.real()*tw1.imag()
+			};
 		}
 	}
 	template<bool inverse>
