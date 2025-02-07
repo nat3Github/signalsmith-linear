@@ -24,7 +24,7 @@ FetchContent_MakeAvailable(signalsmith_dsp)
 FetchContent_Declare(
 	signalsmith_plot
 	GIT_REPOSITORY https://github.com/Signalsmith-Audio/plot.git
-	GIT_TAG fd68b5c6dd928d5b18b6d401c88bd7957021d405 # main
+	GIT_TAG e53eb933ae0de8bb8acd54b3e96a8bed6a708a2a # main
 	GIT_SHALLOW ON
 	SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/plot"
 )
