@@ -124,6 +124,26 @@ struct DynamicSTFT {
 		return _samplesSinceAnalysis;
 	}
 
+	/// When no more synthesis is expected, let output taper away to 0 based on windowing.  Otherwise, the output will be scaled as if there's just a very long block interval, which can exaggerate artefacts and numerical errors.  You still can't read more than `blockSamples()` into the future.
+	void finishOutput(Sample strength=1, size_t offset=0) {
+		Sample maxWindowProduct = 0;
+		
+		size_t chunk1 = std::max(offset, std::min(_blockSamples, _blockSamples - outputPos));
+		
+		for (size_t i = offset; i < chunk1; ++i) {
+			size_t i2 = outputPos + i;
+			Sample &wp = sumWindowProducts[i2];
+			maxWindowProduct = std::max(wp, maxWindowProduct);
+			wp += (maxWindowProduct - wp)*strength;
+		}
+		for (size_t i = chunk1; i < _blockSamples; ++i) {
+			size_t i2 = i + outputPos - _blockSamples;
+			Sample &wp = sumWindowProducts[i2];
+			maxWindowProduct = std::max(wp, maxWindowProduct);
+			wp += (maxWindowProduct - wp)*strength;
+		}
+	}
+
 	void readOutput(size_t channel, size_t offset, size_t length, Sample *output) {
 		Sample *buffer = sumBuffer.data() + channel*_blockSamples;
 		size_t offsetPos = (outputPos + offset)%_blockSamples;
