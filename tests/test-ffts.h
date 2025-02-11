@@ -1100,6 +1100,7 @@ void testRealFftSplits(size_t maxSize, double benchmarkSeconds) {
 template<class Sample, bool modified>
 void testRealFft(int size) {
 	bool isPow2 = std::round(std::exp2(std::round(std::log2(size)))) == size;
+	bool comparePow2 = !modified && isPow2;
 
 	signalsmith::linear::FFT<Sample> complexFft(size);
 	signalsmith::linear::RealFFT<Sample, true, modified> realFft(size);
@@ -1113,14 +1114,14 @@ void testRealFft(int size) {
 	auto *realTime2C = data.real(1, "Real (c->t)");
 	auto realTime2S = data.real(2, "Real (s->t)");
 
-	auto *pow2FreqC = data.complex(1, "Pow2 (c)");
-	auto pow2FreqS = data.split(1, "Pow2 (s)");
-	auto *pow2Time2C = data.real(3, "Pow2 (c->t)");
-	auto pow2Time2S = data.real(4, "Pow2 (s->t)");
+	auto *complexTime = data.complex(1, "Ref (t)");
+	auto *complexFreq = data.complex(2, "Ref (c)");
+	auto *complexTime2 = data.complex(3, "Ref (c->t)");
 
-	auto *complexTime = data.complex(2, "Ref (t)");
-	auto *complexFreq = data.complex(3, "Ref (c)");
-	auto *complexTime2 = data.complex(4, "Ref (c->t)");
+	auto *pow2FreqC = comparePow2 ? data.complex(4, "Pow2 (c)") : data.complex(0);
+	auto pow2FreqS = comparePow2 ? data.split(1, "Pow2 (s)") : data.split(0);
+	auto *pow2Time2C = comparePow2 ? data.real(3, "Pow2 (c->t)") : data.real(0);
+	auto *pow2Time2S = comparePow2 ? data.real(4, "Pow2 (s->t)"): data.real(0);
 	
 	for (int i = 0; i < size; ++i) {
 		complexTime[i] = realTime[i];
@@ -1144,7 +1145,7 @@ void testRealFft(int size) {
 	// Split-complex input
 	realFft.fft(realTime, realFreqS.real, realFreqS.imag);
 	realFft.ifft(realFreqS.real, realFreqS.imag, realTime2S);
-	if (isPow2) {
+	if (comparePow2) {
 		pow2Fft.fft(realTime, pow2FreqC);
 		pow2Fft.ifft(pow2FreqC, pow2Time2C);
 		pow2Fft.fft(realTime, pow2FreqS.real, pow2FreqS.imag);
@@ -1173,7 +1174,7 @@ void testRealFft(int size) {
 		error += std::norm(complexTime2[i] - realTime2C[i]);
 		error += std::norm(complexTime2[i] - realTime2S[i]);
 	}
-	if (!modified && isPow2) {
+	if (comparePow2) {
 		for (int i = 0; i < size/2; ++i) {
 			error += std::norm(complexFreq[i] - pow2FreqC[i]);
 			error += std::norm(complexFreq[i] - pow2FreqS[i]);
