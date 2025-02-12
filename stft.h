@@ -25,10 +25,10 @@ struct DynamicSTFT {
 		_fftBins = _fftSamples/2;
 		
 		_inputLengthSamples = _blockSamples + extraInputHistory;
-		inputBuffer.resize(_inputLengthSamples*_analysisChannels);
+		input.buffer.resize(_inputLengthSamples*_analysisChannels);
 
-		sumBuffer.resize(_blockSamples*_synthesisChannels);
-		sumWindowProducts.resize(_blockSamples);
+		output.buffer.resize(_blockSamples*_synthesisChannels);
+		output.windowProducts.resize(_blockSamples);
 		spectrumBuffer.resize(_fftBins*std::max(_analysisChannels, _synthesisChannels));
 		timeBuffer.resize(_fftSamples);
 
@@ -68,56 +68,56 @@ struct DynamicSTFT {
 	}
 
 	void reset(Sample productWeight=1) {
-		inputPos = _blockSamples;
-		outputPos = 0;
-		for (auto &v : inputBuffer) v = 0;
-		for (auto &v : sumBuffer) v = 0;
+		input.pos = _blockSamples;
+		output.pos = 0;
+		for (auto &v : input.buffer) v = 0;
+		for (auto &v : output.buffer) v = 0;
 		for (auto &v : spectrumBuffer) v = 0;
-		for (auto &v : sumWindowProducts) v = 0;
+		for (auto &v : output.windowProducts) v = 0;
 		addWindowProduct();
 		for (int i = int(_blockSamples) - int(_defaultInterval) - 1; i >= 0; --i) {
-			sumWindowProducts[i] += sumWindowProducts[i + _defaultInterval];
+			output.windowProducts[i] += output.windowProducts[i + _defaultInterval];
 		}
-		for (auto &v : sumWindowProducts) v = v*productWeight + almostZero;
+		for (auto &v : output.windowProducts) v = v*productWeight + almostZero;
 		moveOutput(_defaultInterval); // ready for first block immediately
 	}
 
-	void writeInput(size_t channel, size_t offset, size_t length, Sample *input) {
-		Sample *buffer = inputBuffer.data() + channel*_inputLengthSamples;
+	void writeInput(size_t channel, size_t offset, size_t length, Sample *inputArray) {
+		Sample *buffer = input.buffer.data() + channel*_inputLengthSamples;
 
-		size_t offsetPos = (inputPos + offset)%_inputLengthSamples;
+		size_t offsetPos = (input.pos + offset)%_inputLengthSamples;
 		size_t inputWrapIndex = _inputLengthSamples - offsetPos;
 		size_t chunk1 = std::min(length, inputWrapIndex);
 		for (size_t i = 0; i < chunk1; ++i) {
 			size_t i2 = offsetPos + i;
-			buffer[i2] = input[i];
+			buffer[i2] = inputArray[i];
 		}
 		for (size_t i = chunk1; i < length; ++i) {
 			size_t i2 = i + offsetPos -_inputLengthSamples;
-			buffer[i2] = input[i];
+			buffer[i2] = inputArray[i];
 		}
 	}
-	void writeInput(size_t channel, size_t length, Sample *input) {
-		writeInput(channel, 0, length, input);
+	void writeInput(size_t channel, size_t length, Sample *inputArray) {
+		writeInput(channel, 0, length, inputArray);
 	}
 	void moveInput(size_t samples, bool clearInput=false) {
 		if (clearInput) {
-			size_t inputWrapIndex = _inputLengthSamples - inputPos;
+			size_t inputWrapIndex = _inputLengthSamples - input.pos;
 			size_t chunk1 = std::min(samples, inputWrapIndex);
 			for (size_t c = 0; c < _analysisChannels; ++c) {
-				Sample *buffer = inputBuffer.data() + c*_inputLengthSamples;
+				Sample *buffer = input.buffer.data() + c*_inputLengthSamples;
 				for (size_t i = 0; i < chunk1; ++i) {
-					size_t i2 = inputPos + i;
+					size_t i2 = input.pos + i;
 					buffer[i2] = 0;
 				}
 				for (size_t i = chunk1; i < samples; ++i) {
-					size_t i2 = i + inputPos - _inputLengthSamples;
+					size_t i2 = i + input.pos - _inputLengthSamples;
 					buffer[i2] = 0;
 				}
 			}
 		}
 
-		inputPos = (inputPos + samples)%_inputLengthSamples;
+		input.pos = (input.pos + samples)%_inputLengthSamples;
 		_samplesSinceAnalysis += samples;
 	}
 	size_t samplesSinceAnalysis() const {
@@ -128,63 +128,63 @@ struct DynamicSTFT {
 	void finishOutput(Sample strength=1, size_t offset=0) {
 		Sample maxWindowProduct = 0;
 		
-		size_t chunk1 = std::max(offset, std::min(_blockSamples, _blockSamples - outputPos));
+		size_t chunk1 = std::max(offset, std::min(_blockSamples, _blockSamples - output.pos));
 		
 		for (size_t i = offset; i < chunk1; ++i) {
-			size_t i2 = outputPos + i;
-			Sample &wp = sumWindowProducts[i2];
+			size_t i2 = output.pos + i;
+			Sample &wp = output.windowProducts[i2];
 			maxWindowProduct = std::max(wp, maxWindowProduct);
 			wp += (maxWindowProduct - wp)*strength;
 		}
 		for (size_t i = chunk1; i < _blockSamples; ++i) {
-			size_t i2 = i + outputPos - _blockSamples;
-			Sample &wp = sumWindowProducts[i2];
+			size_t i2 = i + output.pos - _blockSamples;
+			Sample &wp = output.windowProducts[i2];
 			maxWindowProduct = std::max(wp, maxWindowProduct);
 			wp += (maxWindowProduct - wp)*strength;
 		}
 	}
 
-	void readOutput(size_t channel, size_t offset, size_t length, Sample *output) {
-		Sample *buffer = sumBuffer.data() + channel*_blockSamples;
-		size_t offsetPos = (outputPos + offset)%_blockSamples;
+	void readOutput(size_t channel, size_t offset, size_t length, Sample *outputArray) {
+		Sample *buffer = output.buffer.data() + channel*_blockSamples;
+		size_t offsetPos = (output.pos + offset)%_blockSamples;
 		size_t outputWrapIndex = _blockSamples - offsetPos;
 		size_t chunk1 = std::min(length, outputWrapIndex);
 		for (size_t i = 0; i < chunk1; ++i) {
 			size_t i2 = offsetPos + i;
-			output[i] = buffer[i2]/sumWindowProducts[i2];
+			outputArray[i] = buffer[i2]/output.windowProducts[i2];
 		}
 		for (size_t i = chunk1; i < length; ++i) {
 			size_t i2 = i + offsetPos - _blockSamples;
-			output[i] = buffer[i2]/sumWindowProducts[i2];
+			outputArray[i] = buffer[i2]/output.windowProducts[i2];
 		}
 	}
-	void readOutput(size_t channel, size_t length, Sample *output) {
-		return readOutput(channel, 0, length, output);
+	void readOutput(size_t channel, size_t length, Sample *outputArray) {
+		return readOutput(channel, 0, length, outputArray);
 	}
 	void moveOutput(size_t samples) {
 		// Zero the output buffer as we cross it
-		size_t outputWrapIndex = _blockSamples - outputPos;
+		size_t outputWrapIndex = _blockSamples - output.pos;
 		size_t chunk1 = std::min(samples, outputWrapIndex);
 		for (size_t c = 0; c < _synthesisChannels; ++c) {
-			Sample *buffer = sumBuffer.data() + c*_blockSamples;
+			Sample *buffer = output.buffer.data() + c*_blockSamples;
 			for (size_t i = 0; i < chunk1; ++i) {
-				size_t i2 = outputPos + i;
+				size_t i2 = output.pos + i;
 				buffer[i2] = 0;
 			}
 			for (size_t i = chunk1; i < samples; ++i) {
-				size_t i2 = i + outputPos - _blockSamples;
+				size_t i2 = i + output.pos - _blockSamples;
 				buffer[i2] = 0;
 			}
 		}
 		for (size_t i = 0; i < chunk1; ++i) {
-			size_t i2 = outputPos + i;
-			sumWindowProducts[i2] = almostZero;
+			size_t i2 = output.pos + i;
+			output.windowProducts[i2] = almostZero;
 		}
 		for (size_t i = chunk1; i < samples; ++i) {
-			size_t i2 = i + outputPos - _blockSamples;
-			sumWindowProducts[i2] = almostZero;
+			size_t i2 = i + output.pos - _blockSamples;
+			output.windowProducts[i2] = almostZero;
 		}
-		outputPos = (outputPos + samples)%_blockSamples;
+		output.pos = (output.pos + samples)%_blockSamples;
 		_samplesSinceSynthesis += samples;
 	}
 	size_t samplesSinceSynthesis() const {
@@ -259,13 +259,13 @@ struct DynamicSTFT {
 		step -= channel*(fftSteps + 1);
 		
 		if (step == 0) { // extra step at start of each channel: copy windowed input into buffer
-			size_t offsetPos = (_inputLengthSamples*2 + inputPos - _blockSamples - samplesInPast)%_inputLengthSamples;
+			size_t offsetPos = (_inputLengthSamples*2 + input.pos - _blockSamples - samplesInPast)%_inputLengthSamples;
 			size_t inputWrapIndex = _inputLengthSamples - offsetPos;
 			size_t chunk1 = std::min(_analysisOffset, inputWrapIndex);
 			size_t chunk2 = std::max(_analysisOffset, std::min(_blockSamples, inputWrapIndex));
 
 			_samplesSinceAnalysis = samplesInPast;
-			Sample *buffer = inputBuffer.data() + channel*_inputLengthSamples;
+			Sample *buffer = input.buffer.data() + channel*_inputLengthSamples;
 			for (size_t i = 0; i < chunk1; ++i) {
 				Sample w = modified ? -_analysisWindow[i] : _analysisWindow[i];
 				size_t ti = i + (_fftSamples - _analysisOffset);
@@ -319,33 +319,33 @@ struct DynamicSTFT {
 		step -= channel*(fftSteps + 1);
 
 		if (step == fftSteps) { // extra step after each channel's FFT
-			Sample *buffer = sumBuffer.data() + channel*_blockSamples;
-			size_t outputWrapIndex = _blockSamples - outputPos;
+			Sample *buffer = output.buffer.data() + channel*_blockSamples;
+			size_t outputWrapIndex = _blockSamples - output.pos;
 			size_t chunk1 = std::min(_synthesisOffset, outputWrapIndex);
 			size_t chunk2 = std::min(_blockSamples, std::max(_synthesisOffset, outputWrapIndex));
 			
 			for (size_t i = 0; i < chunk1; ++i) {
 				Sample w = modified ? -_synthesisWindow[i] : _synthesisWindow[i];
 				size_t ti = i + (_fftSamples - _synthesisOffset);
-				size_t bi = outputPos + i;
+				size_t bi = output.pos + i;
 				buffer[bi] += timeBuffer[ti]*w;
 			}
 			for (size_t i = chunk1; i < _synthesisOffset; ++i) {
 				Sample w = modified ? -_synthesisWindow[i] : _synthesisWindow[i];
 				size_t ti = i + (_fftSamples - _synthesisOffset);
-				size_t bi = i + outputPos - _blockSamples;
+				size_t bi = i + output.pos - _blockSamples;
 				buffer[bi] += timeBuffer[ti]*w;
 			}
 			for (size_t i = _synthesisOffset; i < chunk2; ++i) {
 				Sample w = _synthesisWindow[i];
 				size_t ti = i - _synthesisOffset;
-				size_t bi = outputPos + i;
+				size_t bi = output.pos + i;
 				buffer[bi] += timeBuffer[ti]*w;
 			}
 			for (size_t i = chunk2; i < _blockSamples; ++i) {
 				Sample w = _synthesisWindow[i];
 				size_t ti = i - _synthesisOffset;
-				size_t bi = i + outputPos - _blockSamples;
+				size_t bi = i + output.pos - _blockSamples;
 				buffer[bi] += timeBuffer[ti]*w;
 			}
 		} else {
@@ -364,6 +364,48 @@ struct DynamicSTFT {
 	COMPAT_SPELLING(synthesise, synthesize);
 	COMPAT_SPELLING(synthesiseStep, synthesizeStep);
 	COMPAT_SPELLING(synthesiseSteps, synthesizeSteps);
+
+	/// Input (only available so we can save/restore the input state)
+	struct Input {
+		void swap(Input &other) {
+			std::swap(pos, other.pos);
+			std::swap(buffer, other.buffer);
+		}
+		
+		Input & operator=(const Input &other) {
+			pos = other.pos;
+			buffer.assign(other.buffer.begin(), other.buffer.end());
+			return *this;
+		}
+	private:
+		friend struct DynamicSTFT;
+		size_t pos = 0;
+		std::vector<Sample> buffer;
+	};
+	Input input;
+	
+	/// Output (only available so we can save/restore the output state)
+	struct Output {
+		void swap(Output &other) {
+			std::swap(pos, other.pos);
+			std::swap(buffer, other.buffer);
+			std::swap(windowProducts, other.windowProducts);
+		}
+
+		Output & operator=(const Output &other) {
+			pos = other.pos;
+			buffer.assign(other.buffer.begin(), other.buffer.end());
+			windowProducts.assign(other.windowProducts.begin(), other.windowProducts.end());
+			return *this;
+		}
+	private:
+		friend struct DynamicSTFT;
+		size_t pos = 0;
+		std::vector<Sample> buffer;
+		std::vector<Sample> windowProducts;
+	};
+	Output output;
+
 private:
 	static constexpr Sample almostZero = 1e-30;
 
@@ -376,12 +418,6 @@ private:
 	std::vector<Complex> spectrumBuffer;
 	std::vector<Sample> timeBuffer;
 
-	size_t inputPos = 0;
-	std::vector<Sample> inputBuffer;
-
-	size_t outputPos = 0;
-	std::vector<Sample> sumBuffer;
-	std::vector<Sample> sumWindowProducts;
 	size_t _samplesSinceSynthesis = 0, _samplesSinceAnalysis = 0;
 	
 	void addWindowProduct() {
@@ -391,19 +427,19 @@ private:
 		int wMin = std::max<int>(0, windowShift);
 		int wMax = std::min<int>(_blockSamples, int(_blockSamples) + windowShift);
 
-		Sample *windowProduct = sumWindowProducts.data();
-		int outputWrapIndex = _blockSamples - outputPos;
+		Sample *windowProduct = output.windowProducts.data();
+		int outputWrapIndex = _blockSamples - output.pos;
 		int chunk1 = std::min<int>(wMax, std::max<int>(wMin, outputWrapIndex));
 		for (int i = wMin; i < chunk1; ++i) {
 			Sample wa = _analysisWindow[i - windowShift];
 			Sample ws = _synthesisWindow[i];
-			size_t bi = outputPos + i;
+			size_t bi = output.pos + i;
 			windowProduct[bi] += wa*ws*_fftSamples;
 		}
 		for (int i = chunk1; i < wMax; ++i) {
 			Sample wa = _analysisWindow[i - windowShift];
 			Sample ws = _synthesisWindow[i];
-			size_t bi = i + outputPos - _blockSamples;
+			size_t bi = i + output.pos - _blockSamples;
 			windowProduct[bi] += wa*ws*_fftSamples;
 		}
 	}
