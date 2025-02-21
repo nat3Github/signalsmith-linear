@@ -987,7 +987,7 @@ struct RealFFT {
 		return complexFft.size()*2;
 	}
 	size_t steps() const {
-		return complexFft.steps() + 2;
+		return complexFft.steps() + (splitComputation ? 3 : 2);
 	}
 	
 	void fft(const Sample *time, Complex *freq) {
@@ -1023,8 +1023,16 @@ struct RealFFT {
 					freq[0] = {bin0r + bin0i, bin0r - bin0i};
 				}
 
-				size_t qSize = hSize/2;
-				for (size_t i = halfBinShift ? 0 : 1; i <= qSize; ++i) {
+				size_t startI = halfBinShift ? 0 : 1;
+				size_t endI = hSize/2 + 1;
+				if (splitComputation) { // Do this last twiddle in two halves
+					if (step == complexFft.steps()) {
+						endI = (startI + endI)/2;
+					} else {
+						startI = (startI + endI)/2;
+					}
+				}
+				for (size_t i = startI; i < endI; ++i) {
 					size_t conjI = halfBinShift ? (hSize - 1 - i) : (hSize - i);
 					Complex twiddle = twiddles[i];
 
@@ -1067,8 +1075,17 @@ struct RealFFT {
 					};
 				}
 				
-				size_t hSize = complexFft.size(), qSize = hSize/2;
-				for (size_t i = halfBinShift ? 0 : 1; i <= qSize; ++i) {
+				size_t hSize = complexFft.size();
+				size_t startI = halfBinShift ? 0 : 1;
+				size_t endI = hSize/2 + 1;
+				if (splitComputation) { // Do this last twiddle in two halves
+					if (step == complexFft.steps()) {
+						endI = (startI + endI)/2;
+					} else {
+						startI = (startI + endI)/2;
+					}
+				}
+				for (size_t i = startI; i < endI; ++i) {
 					size_t conjI = halfBinShift ? (hSize - 1 - i) : (hSize - i);
 					Complex twiddle = twiddles[i];
 
@@ -1118,8 +1135,16 @@ struct RealFFT {
 				outI[0] = bin0r - bin0i;
 			}
 
-			size_t qSize = hSize/2;
-			for (size_t i = halfBinShift ? 0 : 1; i <= qSize; ++i) {
+			size_t startI = halfBinShift ? 0 : 1;
+			size_t endI = hSize/2 + 1;
+			if (splitComputation) { // Do this last twiddle in two halves
+				if (step == complexFft.steps()) {
+					endI = (startI + endI)/2;
+				} else {
+					startI = (startI + endI)/2;
+				}
+			}
+			for (size_t i = startI; i < endI; ++i) {
 				size_t conjI = halfBinShift ? (hSize - 1 - i) : (hSize - i);
 				Complex twiddle = twiddles[i];
 
@@ -1149,14 +1174,23 @@ struct RealFFT {
 			Sample *tmpTimeR = (Sample *)tmpTime.data(), *tmpTimeI = tmpTimeR + hSize;
 			Sample *tmpFreqR = (Sample *)tmpFreq.data(), *tmpFreqI = tmpFreqR + hSize;
 
-			if (step-- == 0) {
+			bool splitFirst = splitComputation && (step-- == 0);
+			if (splitFirst || step-- == 0) {
 				Complex bin0 = freq[0];
 				if (!halfBinShift) {
 					tmpFreqR[0] = bin0.real() + bin0.imag();
 					tmpFreqI[0] = bin0.real() - bin0.imag();
 				}
-				size_t qSize = hSize/2;
-				for (size_t i = halfBinShift ? 0 : 1; i <= qSize; ++i) {
+				size_t startI = halfBinShift ? 0 : 1;
+				size_t endI = hSize/2 + 1;
+				if (splitComputation) { // Do this first twiddle in two halves
+					if (splitFirst) {
+						endI = (startI + endI)/2;
+					} else {
+						startI = (startI + endI)/2;
+					}
+				}
+				for (size_t i = startI; i < endI; ++i) {
 					size_t conjI = halfBinShift ? (hSize - 1 - i) : (hSize - i);
 					Complex twiddle = twiddles[i];
 
@@ -1191,7 +1225,8 @@ struct RealFFT {
 				}
 			}
 		} else {
-			if (step-- == 0) {
+			bool splitFirst = splitComputation && (step-- == 0);
+			if (splitFirst || step-- == 0) {
 				Complex bin0 = freq[0];
 				if (!halfBinShift) {
 					tmpFreq[0] = {
@@ -1199,8 +1234,17 @@ struct RealFFT {
 						bin0.real() - bin0.imag()
 					};
 				}
-				size_t hSize = complexFft.size(), qSize = hSize/2;
-				for (size_t i = halfBinShift ? 0 : 1; i <= qSize; ++i) {
+				size_t hSize = complexFft.size();
+				size_t startI = halfBinShift ? 0 : 1;
+				size_t endI = hSize/2 + 1;
+				if (splitComputation) { // Do this first twiddle in two halves
+					if (splitFirst) {
+						endI = (startI + endI)/2;
+					} else {
+						startI = (startI + endI)/2;
+					}
+				}
+				for (size_t i = startI; i < endI; ++i) {
 					size_t conjI = halfBinShift ? (hSize - 1 - i) : (hSize - i);
 					Complex twiddle = twiddles[i];
 
@@ -1244,14 +1288,24 @@ struct RealFFT {
 		size_t hSize = complexFft.size();
 		Sample *tmpTimeR = (Sample *)tmpTime.data(), *tmpTimeI = tmpTimeR + hSize;
 		Sample *tmpFreqR = (Sample *)tmpFreq.data(), *tmpFreqI = tmpFreqR + hSize;
-		if (step-- == 0) {
+
+		bool splitFirst = splitComputation && (step-- == 0);
+		if (splitFirst || step-- == 0) {
 			Sample bin0r = inR[0], bin0i = inI[0];
 			if (!halfBinShift) {
 				tmpFreqR[0] = bin0r + bin0i;
 				tmpFreqI[0] = bin0r - bin0i;
 			}
-			size_t qSize = hSize/2;
-			for (size_t i = halfBinShift ? 0 : 1; i <= qSize; ++i) {
+			size_t startI = halfBinShift ? 0 : 1;
+			size_t endI = hSize/2 + 1;
+			if (splitComputation) { // Do this first twiddle in two halves
+				if (splitFirst) {
+					endI = (startI + endI)/2;
+				} else {
+					startI = (startI + endI)/2;
+				}
+			}
+			for (size_t i = startI; i < endI; ++i) {
 				size_t conjI = halfBinShift ? (hSize - 1 - i) : (hSize - i);
 				Complex twiddle = twiddles[i];
 				Sample fir = inR[i], fii = inI[i];

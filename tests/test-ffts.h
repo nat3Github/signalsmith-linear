@@ -834,35 +834,54 @@ struct SplitRunner {
 		freq.resize(n);
 		time2.resize(n);
 
-		Stopwatch stopwatch;
-		fft.resize(n);
+		std::default_random_engine engine(123456);
+		std::uniform_real_distribution<Sample> dist{-1, 1};
+		for (auto &v : time) v = {dist(engine), dist(engine)};
+		for (auto &v : freq) v = {dist(engine), dist(engine)};
+		for (auto &v : time2) v = {dist(engine), dist(engine)};
 
+		fft.resize(n);
+		size_t fftSteps = fft.steps();
+
+		double benchmarkChunk = benchmarkSeconds/5;
+		std::vector<Stopwatch> stopwatches;
+		stopwatches.resize(fftSteps*2, false);
+		size_t repeats = 1;
+		
 		double totalTime = 0;
-		std::vector<double> stepTimes(fft.steps()*2);
-		while (totalTime < benchmarkSeconds) {
-			for (size_t s = 0; s < fft.steps(); ++s) {
-				stopwatch.start();
-				for (size_t r = 0; r < 10; ++r) {
-					fft.fft(s, time.data(), freq.data());
+		do {
+			for (size_t r = 0; r < repeats; ++r) {
+				for (size_t s = 0; s < fftSteps; ++s) {
+					auto &stopwatch = stopwatches[s];
+					stopwatch.startLap();
+					for (size_t r = 0; r < 10; ++r) {
+						fft.fft(s, time.data(), freq.data());
+					}
+					stopwatch.lap();
 				}
-				double t = stopwatch.lap();
-				totalTime += t;
-				stepTimes[s] += t;
-			}
-			for (size_t s = 0; s < fft.steps(); ++s) {
-				stopwatch.start();
-				for (size_t r = 0; r < 10; ++r) {
-					fft.ifft(s, freq.data(), time2.data());
+				for (size_t s = 0; s < fftSteps; ++s) {
+					auto &stopwatch = stopwatches[s + fftSteps];
+					stopwatch.startLap();
+					for (size_t r = 0; r < 10; ++r) {
+						fft.ifft(s, freq.data(), time2.data());
+					}
+					stopwatch.lap();
 				}
-				double t = stopwatch.lap();
-				totalTime += t;
-				stepTimes[s + fft.steps()] += t;
 			}
-		}
-		Sample averageTime = totalTime/stepTimes.size();
-		for (size_t s = 0; s < stepTimes.size(); ++s) {
-			line.add(double(s)/stepTimes.size(), stepTimes[s]/averageTime);
-			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/averageTime);
+			
+			totalTime = 0;
+			for (auto &s : stopwatches) totalTime += s.total();
+			
+			if (totalTime < benchmarkChunk) {
+				repeats *= 2;
+				for (auto &s : stopwatches) s.start(); // clear them all
+			}
+		} while (totalTime < benchmarkSeconds);
+		
+		Sample averageTime = totalTime/stopwatches.size();
+		for (size_t s = 0; s < stopwatches.size(); ++s) {
+			line.add(double(s)/stopwatches.size(), stopwatches[s].total()/averageTime);
+			line.add(double(s + 1)/stopwatches.size(), stopwatches[s].total()/averageTime);
 		}
 	}
 
@@ -874,42 +893,63 @@ struct SplitRunner {
 		time2R.resize(n);
 		time2I.resize(n);
 
-		Stopwatch stopwatch;
-		fft.resize(n);
+		std::default_random_engine engine(123456);
+		std::uniform_real_distribution<Sample> dist{-1, 1};
+		for (auto &v : timeR) v = dist(engine);
+		for (auto &v : timeI) v = dist(engine);
+		for (auto &v : freqR) v = dist(engine);
+		for (auto &v : freqI) v = dist(engine);
+		for (auto &v : time2R) v = dist(engine);
+		for (auto &v : time2I) v = dist(engine);
 
+		fft.resize(n);
+		size_t fftSteps = fft.steps();
+
+		double benchmarkChunk = benchmarkSeconds/5;
+		std::vector<Stopwatch> stopwatches;
+		stopwatches.resize(fftSteps*2, false);
+		size_t repeats = 1;
+		
 		double totalTime = 0;
-		std::vector<double> stepTimes(fft.steps()*2);
-		while (totalTime < benchmarkSeconds) {
-			for (size_t s = 0; s < fft.steps(); ++s) {
-				stopwatch.start();
-				for (size_t r = 0; r < 10; ++r) {
-					fft.fft(s, timeR.data(), timeI.data(), freqR.data(), freqI.data());
+		do {
+			for (size_t r = 0; r < repeats; ++r) {
+				for (size_t s = 0; s < fftSteps; ++s) {
+					auto &stopwatch = stopwatches[s];
+					stopwatch.startLap();
+					for (size_t r = 0; r < 10; ++r) {
+						fft.fft(s, timeR.data(), timeI.data(), freqR.data(), freqI.data());
+					}
+					stopwatch.lap();
 				}
-				double t = stopwatch.lap();
-				totalTime += t;
-				stepTimes[s] += t;
-			}
-			for (size_t s = 0; s < fft.steps(); ++s) {
-				stopwatch.start();
-				for (size_t r = 0; r < 10; ++r) {
-					fft.ifft(s, freqR.data(), freqI.data(), time2R.data(), time2I.data());
+				for (size_t s = 0; s < fftSteps; ++s) {
+					auto &stopwatch = stopwatches[s + fftSteps];
+					stopwatch.startLap();
+					for (size_t r = 0; r < 10; ++r) {
+						fft.ifft(s, freqR.data(), freqI.data(), time2R.data(), time2I.data());
+					}
+					stopwatch.lap();
 				}
-				double t = stopwatch.lap();
-				totalTime += t;
-				stepTimes[s + fft.steps()] += t;
 			}
-		}
-		Sample averageTime = totalTime/stepTimes.size();
-		for (size_t s = 0; s < stepTimes.size(); ++s) {
-			line.add(double(s)/stepTimes.size(), stepTimes[s]/averageTime);
-			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/averageTime);
+			
+			totalTime = 0;
+			for (auto &s : stopwatches) totalTime += s.total();
+			
+			if (totalTime < benchmarkChunk) {
+				repeats *= 2;
+				for (auto &s : stopwatches) s.start(); // clear them all
+			}
+		} while (totalTime < benchmarkSeconds);
+		
+		Sample averageTime = totalTime/stopwatches.size();
+		for (size_t s = 0; s < stopwatches.size(); ++s) {
+			line.add(double(s)/stopwatches.size(), stopwatches[s].total()/averageTime);
+			line.add(double(s + 1)/stopwatches.size(), stopwatches[s].total()/averageTime);
 		}
 	}
 };
 
 void testComplexFftSplits(size_t maxSize, double benchmarkSeconds) {
 	std::cout << "\nFFT splits\n----------\n";
-	benchmarkSeconds *= 1000;
 
 	signalsmith::plot::Figure figure;
 	auto &floatPlot = figure(0, 0).plot(250, 200).title("float");
@@ -973,35 +1013,54 @@ struct RealSplitRunner {
 		freq.resize(n/2);
 		time2.resize(n);
 
-		Stopwatch stopwatch;
-		fft.resize(n);
+		std::default_random_engine engine(123456);
+		std::uniform_real_distribution<Sample> dist{-1, 1};
+		for (auto &v : time) v = dist(engine);
+		for (auto &v : freq) v = {dist(engine), dist(engine)};
+		for (auto &v : time2) v = dist(engine);
 
+		fft.resize(n);
+		size_t fftSteps = fft.steps();
+
+		double benchmarkChunk = benchmarkSeconds/5;
+		std::vector<Stopwatch> stopwatches;
+		stopwatches.resize(fftSteps*2, false);
+		size_t repeats = 1;
+		
 		double totalTime = 0;
-		std::vector<double> stepTimes(fft.steps()*2);
-		while (totalTime < benchmarkSeconds) {
-			for (size_t s = 0; s < fft.steps(); ++s) {
-				stopwatch.start();
-				for (size_t r = 0; r < 10; ++r) {
-					fft.fft(s, time.data(), freq.data());
+		do {
+			for (size_t r = 0; r < repeats; ++r) {
+				for (size_t s = 0; s < fftSteps; ++s) {
+					auto &stopwatch = stopwatches[s];
+					stopwatch.startLap();
+					for (size_t r = 0; r < 10; ++r) {
+						fft.fft(s, time.data(), freq.data());
+					}
+					stopwatch.lap();
 				}
-				double t = stopwatch.lap();
-				totalTime += t;
-				stepTimes[s] += t;
-			}
-			for (size_t s = 0; s < fft.steps(); ++s) {
-				stopwatch.start();
-				for (size_t r = 0; r < 10; ++r) {
-					fft.ifft(s, freq.data(), time2.data());
+				for (size_t s = 0; s < fftSteps; ++s) {
+					auto &stopwatch = stopwatches[s + fftSteps];
+					stopwatch.startLap();
+					for (size_t r = 0; r < 10; ++r) {
+						fft.ifft(s, freq.data(), time2.data());
+					}
+					stopwatch.lap();
 				}
-				double t = stopwatch.lap();
-				totalTime += t;
-				stepTimes[s + fft.steps()] += t;
 			}
-		}
-		Sample averageTime = totalTime/stepTimes.size();
-		for (size_t s = 0; s < stepTimes.size(); ++s) {
-			line.add(double(s)/stepTimes.size(), stepTimes[s]/averageTime);
-			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/averageTime);
+			
+			totalTime = 0;
+			for (auto &s : stopwatches) totalTime += s.total();
+			
+			if (totalTime < benchmarkChunk) {
+				repeats *= 2;
+				for (auto &s : stopwatches) s.start(); // clear them all
+			}
+		} while (totalTime < benchmarkSeconds);
+		
+		Sample averageTime = totalTime/stopwatches.size();
+		for (size_t s = 0; s < stopwatches.size(); ++s) {
+			line.add(double(s)/stopwatches.size(), stopwatches[s].total()/averageTime);
+			line.add(double(s + 1)/stopwatches.size(), stopwatches[s].total()/averageTime);
 		}
 	}
 
@@ -1011,35 +1070,57 @@ struct RealSplitRunner {
 		freqI.resize(n/2);
 		time2.resize(n);
 
-		Stopwatch stopwatch;
 		fft.resize(n);
 
+		std::default_random_engine engine(123456);
+		std::uniform_real_distribution<Sample> dist{-1, 1};
+		for (auto &v : time) v = dist(engine);
+		for (auto &v : freqR) v = dist(engine);
+		for (auto &v : freqI) v = dist(engine);
+		for (auto &v : time2) v = dist(engine);
+
+		fft.resize(n);
+		size_t fftSteps = fft.steps();
+
+		double benchmarkChunk = benchmarkSeconds/5;
+		std::vector<Stopwatch> stopwatches;
+		stopwatches.resize(fftSteps*2, false);
+		size_t repeats = 1;
+		
 		double totalTime = 0;
-		std::vector<double> stepTimes(fft.steps()*2);
-		while (totalTime < benchmarkSeconds) {
-			for (size_t s = 0; s < fft.steps(); ++s) {
-				stopwatch.start();
-				for (size_t r = 0; r < 10; ++r) {
-					fft.fft(s, time.data(), freqR.data(), freqI.data());
+		do {
+			for (size_t r = 0; r < repeats; ++r) {
+				for (size_t s = 0; s < fftSteps; ++s) {
+					auto &stopwatch = stopwatches[s];
+					stopwatch.startLap();
+					for (size_t r = 0; r < 10; ++r) {
+						fft.fft(s, time.data(), freqR.data(), freqI.data());
+					}
+					stopwatch.lap();
 				}
-				double t = stopwatch.lap();
-				totalTime += t;
-				stepTimes[s] += t;
-			}
-			for (size_t s = 0; s < fft.steps(); ++s) {
-				stopwatch.start();
-				for (size_t r = 0; r < 10; ++r) {
-					fft.ifft(s, freqR.data(), freqI.data(), time2.data());
+				for (size_t s = 0; s < fftSteps; ++s) {
+					auto &stopwatch = stopwatches[s + fftSteps];
+					stopwatch.startLap();
+					for (size_t r = 0; r < 10; ++r) {
+						fft.ifft(s, freqR.data(), freqI.data(), time2.data());
+					}
+					stopwatch.lap();
 				}
-				double t = stopwatch.lap();
-				totalTime += t;
-				stepTimes[s + fft.steps()] += t;
 			}
-		}
-		Sample averageTime = totalTime/stepTimes.size();
-		for (size_t s = 0; s < stepTimes.size(); ++s) {
-			line.add(double(s)/stepTimes.size(), stepTimes[s]/averageTime);
-			line.add(double(s + 1)/stepTimes.size(), stepTimes[s]/averageTime);
+			
+			totalTime = 0;
+			for (auto &s : stopwatches) totalTime += s.total();
+			
+			if (totalTime < benchmarkChunk) {
+				repeats *= 2;
+				for (auto &s : stopwatches) s.start(); // clear them all
+			}
+		} while (totalTime < benchmarkSeconds);
+		
+		Sample averageTime = totalTime/stopwatches.size();
+		for (size_t s = 0; s < stopwatches.size(); ++s) {
+			line.add(double(s)/stopwatches.size(), stopwatches[s].total()/averageTime);
+			line.add(double(s + 1)/stopwatches.size(), stopwatches[s].total()/averageTime);
 		}
 	}
 };
@@ -1047,7 +1128,6 @@ struct RealSplitRunner {
 template<bool modified>
 void testRealFftSplits(size_t maxSize, double benchmarkSeconds) {
 	std::cout << "\n" << (modified ? "Modified " : "") << "Real FFT splits\n----------\n";
-	benchmarkSeconds *= 1000;
 
 	signalsmith::plot::Figure figure;
 	auto &floatPlot = figure(0, 0).plot(250, 200).title("float");

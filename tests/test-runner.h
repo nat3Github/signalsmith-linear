@@ -258,7 +258,7 @@ double runBenchmark(double benchmarkSeconds, Fn &&fn) {
 			fn();
 		}
 
-		double lap = stopwatch.seconds(stopwatch.lap());
+		double lap = stopwatch.lap();
 		if (lap < benchmarkChunk) {
 			roundStep *= 2;
 		} else {
