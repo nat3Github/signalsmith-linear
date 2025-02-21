@@ -3,6 +3,7 @@
 #include "./test-runner.h"
 
 //#define INCLUDE_UNSPLIT_SPLITFFT
+//#define INCLUDE_SIMPLE_FFT
 
 // ---------- complex wrappers
 
@@ -495,24 +496,26 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 	RunPlot plot("ffts", benchmarkSeconds);
 
 	auto splitFloat = plot.runner<SplitWrapper<float>>("Split (float)");
-	auto splitDouble = plot.runner<SplitWrapper<double>>("Split (double)");
 	auto splitFloatSplit = plot.runner<SplitWrapperSplit<float>>("Split (split float)");
+	auto pow2Float = plot.runner<Pow2Wrapper<float>>("Pow2 (float)");
+	auto pow2FloatSplit = plot.runner<Pow2WrapperSplit<float>>("Pow2 (split float)");
+	auto splitDouble = plot.runner<SplitWrapper<double>>("Split (double)");
 	auto splitDoubleSplit = plot.runner<SplitWrapperSplit<double>>("Split (split double)");
+	auto pow2Double = plot.runner<Pow2Wrapper<double>>("Pow2 (double)");
+	auto pow2DoubleSplit = plot.runner<Pow2WrapperSplit<double>>("Pow2 (split double)");
 #ifdef INCLUDE_UNSPLIT_SPLITFFT
 	auto unsplitFloat = plot.runner<UnSplitWrapper<float>>("Un-Split (float)");
 	auto unsplitDouble = plot.runner<UnSplitWrapper<double>>("Un-Split (double)");
 	auto unsplitFloatSplit = plot.runner<UnSplitWrapperSplit<float>>("Un-Split (split float)");
 	auto unsplitDoubleSplit = plot.runner<UnSplitWrapperSplit<double>>("Un-Split (split double)");
 #endif
-	auto pow2Float = plot.runner<Pow2Wrapper<float>>("Pow2 (float)");
-	auto pow2Double = plot.runner<Pow2Wrapper<double>>("Pow2 (double)");
-	auto pow2FloatSplit = plot.runner<Pow2WrapperSplit<float>>("Pow2 (split float)");
-	auto pow2DoubleSplit = plot.runner<Pow2WrapperSplit<double>>("Pow2 (split double)");
 
+#ifdef INCLUDE_SIMPLE_FFT
 	auto simpleFloat = plot.runner<SimpleWrapper<float>>("Simple (float)");
 	auto simpleDouble = plot.runner<SimpleWrapper<double>>("Simple (double)");
 	auto simpleFloatSplit = plot.runner<SimpleWrapperSplit<float>>("Simple (split float)");
 	auto simpleDoubleSplit = plot.runner<SimpleWrapperSplit<double>>("Simple (split double)");
+#endif
 	auto dspFloat = plot.runner<SignalsmithDSPWrapper<float>>("DSP library (float)");
 	auto dspDouble = plot.runner<SignalsmithDSPWrapper<double>>("DSP library (double)");
 
@@ -569,6 +572,7 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 		}
 
 		if (pow3 + pow5 + pow7 == 0) {
+#ifdef INCLUDE_SIMPLE_FFT
 			std::cout << "simple double           \r";
 			simpleDouble.run(dataDouble, refTime, refPtrDouble);
 			std::cout << "simple double (split)           \r";
@@ -577,6 +581,7 @@ void testComplexFfts(int maxSize, double benchmarkSeconds) {
 			simpleFloat.run(dataFloat, refTime, refPtrFloat);
 			std::cout << "simple float (split)           \r";
 			simpleFloatSplit.run(dataFloat, refTime, refPtrFloat);
+#endif
 			std::cout << "Pow2 double           \r";
 			pow2Double.run(dataDouble, refTime, refPtrDouble);
 			std::cout << "Pow2 float           \r";
@@ -644,13 +649,17 @@ void benchmarkRealFfts(int maxSize, double benchmarkSeconds) {
 	RunPlot plot("ffts-real", benchmarkSeconds);
 
 	auto splitFloat = plot.runner<SplitRealWrapper<float>>("Split (float)");
-	auto splitDouble = plot.runner<SplitRealWrapper<double>>("Split (double)");
 	auto splitFloatSplit = plot.runner<SplitRealWrapperSplit<float>>("Split (split float)");
-	auto splitDoubleSplit = plot.runner<SplitRealWrapperSplit<double>>("Split (split double)");
 	auto splitMFloat = plot.runner<SplitRealWrapper<float, true>>("Split (modified float)");
-	auto splitMDouble = plot.runner<SplitRealWrapper<double, true>>("Split (modified double)");
 	auto splitMFloatSplit = plot.runner<SplitRealWrapperSplit<float, true>>("Split (modified split float)");
+	auto pow2Float = plot.runner<Pow2RealWrapper<float>>("Pow2 (float)");
+	auto pow2FloatSplit = plot.runner<Pow2RealWrapperSplit<float>>("Pow2 (split float)");
+	auto splitDouble = plot.runner<SplitRealWrapper<double>>("Split (double)");
+	auto splitDoubleSplit = plot.runner<SplitRealWrapperSplit<double>>("Split (split double)");
+	auto splitMDouble = plot.runner<SplitRealWrapper<double, true>>("Split (modified double)");
 	auto splitMDoubleSplit = plot.runner<SplitRealWrapperSplit<double, true>>("Split (modified split double)");
+	auto pow2Double = plot.runner<Pow2RealWrapper<double>>("Pow2 (double)");
+	auto pow2DoubleSplit = plot.runner<Pow2RealWrapperSplit<double>>("Pow2 (split double)");
 #ifdef INCLUDE_UNSPLIT_SPLITFFT
 	auto unsplitFloat = plot.runner<UnSplitRealWrapper<float>>("Un-Split (float)");
 	auto unsplitDouble = plot.runner<UnSplitRealWrapper<double>>("Un-Split (double)");
@@ -661,15 +670,13 @@ void benchmarkRealFfts(int maxSize, double benchmarkSeconds) {
 	auto unsplitMFloatSplit = plot.runner<UnSplitRealWrapperSplit<float, true>>("Un-Split (modified split float)");
 	auto unsplitMDoubleSplit = plot.runner<UnSplitRealWrapperSplit<double, true>>("Un-Split (modified split double)");
 #endif
-	auto pow2Float = plot.runner<Pow2RealWrapper<float>>("Pow2 (float)");
-	auto pow2Double = plot.runner<Pow2RealWrapper<double>>("Pow2 (double)");
-	auto pow2FloatSplit = plot.runner<Pow2RealWrapperSplit<float>>("Pow2 (split float)");
-	auto pow2DoubleSplit = plot.runner<Pow2RealWrapperSplit<double>>("Pow2 (split double)");
 
+#ifdef INCLUDE_SIMPLE_FFT
 	auto simpleFloat = plot.runner<SimpleRealWrapper<float>>("Simple (float)");
 	auto simpleDouble = plot.runner<SimpleRealWrapper<double>>("Simple (double)");
 	auto simpleFloatSplit = plot.runner<SimpleRealWrapperSplit<float>>("Simple (split float)");
 	auto simpleDoubleSplit = plot.runner<SimpleRealWrapperSplit<double>>("Simple (split double)");
+#endif
 	auto dspFloat = plot.runner<SignalsmithDSPRealWrapper<float>>("DSP library (float)");
 	auto dspDouble = plot.runner<SignalsmithDSPRealWrapper<double>>("DSP library (double)");
 	auto dspMFloat = plot.runner<SignalsmithDSPMRealWrapper<float>>("DSP library (modified float)");
@@ -733,6 +740,7 @@ void benchmarkRealFfts(int maxSize, double benchmarkSeconds) {
 		}
 
 		if (pow3 + pow5 + pow7 == 0) {
+#ifdef INCLUDE_SIMPLE_FFT
 			std::cout << "simple double           \r";
 			simpleDouble.run(dataDouble, refTime, refPtrDouble);
 			std::cout << "simple double (split)           \r";
@@ -741,6 +749,7 @@ void benchmarkRealFfts(int maxSize, double benchmarkSeconds) {
 			simpleFloat.run(dataFloat, refTime, refPtrFloat);
 			std::cout << "simple float (split)           \r";
 			simpleFloatSplit.run(dataFloat, refTime, refPtrFloat);
+#endif
 			std::cout << "Pow2 double           \r";
 			pow2Double.run(dataDouble, refTime, refPtrDouble);
 			std::cout << "Pow2 float           \r";
