@@ -1144,45 +1144,93 @@ struct RealFFT {
 		}
 	}
 	void ifft(size_t step, const Complex *freq, Sample *time) {
-		if (step-- == 0) {
-			Complex bin0 = freq[0];
-			if (!halfBinShift) {
-				tmpFreq[0] = {
-					bin0.real() + bin0.imag(),
-					bin0.real() - bin0.imag()
-				};
-			}
-			size_t hSize = complexFft.size(), qSize = hSize/2;
-			for (size_t i = halfBinShift ? 0 : 1; i <= qSize; ++i) {
-				size_t conjI = halfBinShift ? (hSize - 1 - i) : (hSize - i);
-				Complex twiddle = twiddles[i];
-
-				Complex odd = freq[i] + std::conj(freq[conjI]);
-				Complex evenRotMinusI = freq[i] - std::conj(freq[conjI]);
-				Complex evenI = { // Conjugate twiddle
-					evenRotMinusI.real()*twiddle.real() + evenRotMinusI.imag()*twiddle.imag(),
-					evenRotMinusI.imag()*twiddle.real() - evenRotMinusI.real()*twiddle.imag()
-				};
-
-				tmpFreq[i] = odd + evenI;
-				tmpFreq[conjI] = {odd.real() - evenI.real(), evenI.imag() - odd.imag()};
-			}
-		} else if (step < complexFft.steps()) {
-			// Can't just use time as (Complex *), since it might not be aligned properly
-			complexFft.ifft(step, tmpFreq.data(), tmpTime.data());
-		} else {
+		if (complexPrefersSplit) {
 			size_t hSize = complexFft.size();
-			if (halfBinShift) {
-				for (size_t i = 0; i < hSize; ++i) {
-					Complex t = tmpTime[i];
-					Complex twist = halfBinTwists[i];
-					time[2*i] = 	t.real()*twist.real() + t.imag()*twist.imag();
-					time[2*i + 1] = t.imag()*twist.real() - t.real()*twist.imag();
+			Sample *tmpTimeR = (Sample *)tmpTime.data(), *tmpTimeI = tmpTimeR + hSize;
+			Sample *tmpFreqR = (Sample *)tmpFreq.data(), *tmpFreqI = tmpFreqR + hSize;
+
+			if (step-- == 0) {
+				Complex bin0 = freq[0];
+				if (!halfBinShift) {
+					tmpFreqR[0] = bin0.real() + bin0.imag();
+					tmpFreqI[0] = bin0.real() - bin0.imag();
 				}
+				size_t qSize = hSize/2;
+				for (size_t i = halfBinShift ? 0 : 1; i <= qSize; ++i) {
+					size_t conjI = halfBinShift ? (hSize - 1 - i) : (hSize - i);
+					Complex twiddle = twiddles[i];
+
+					Complex odd = freq[i] + std::conj(freq[conjI]);
+					Complex evenRotMinusI = freq[i] - std::conj(freq[conjI]);
+					Complex evenI = { // Conjugate twiddle
+						evenRotMinusI.real()*twiddle.real() + evenRotMinusI.imag()*twiddle.imag(),
+						evenRotMinusI.imag()*twiddle.real() - evenRotMinusI.real()*twiddle.imag()
+					};
+
+					tmpFreqR[i] = odd.real() + evenI.real();
+					tmpFreqI[i] = odd.imag() + evenI.imag();
+					tmpFreqR[conjI] = odd.real() - evenI.real();
+					tmpFreqI[conjI] = evenI.imag() - odd.imag();
+				}
+			} else if (step < complexFft.steps()) {
+				complexFft.ifft(step, tmpFreqR, tmpFreqI, tmpTimeR, tmpTimeI);
 			} else {
-				for (size_t i = 0; i < hSize; ++i) {
-					time[2*i] = tmpTime[i].real();
-					time[2*i + 1] = tmpTime[i].imag();
+				size_t hSize = complexFft.size();
+				if (halfBinShift) {
+					for (size_t i = 0; i < hSize; ++i) {
+						Sample tr = tmpTimeR[i], ti = tmpTimeI[i];
+						Complex twist = halfBinTwists[i];
+						time[2*i] = 	tr*twist.real() + ti*twist.imag();
+						time[2*i + 1] = ti*twist.real() - tr*twist.imag();
+					}
+				} else {
+					for (size_t i = 0; i < hSize; ++i) {
+						time[2*i] = tmpTimeR[i];
+						time[2*i + 1] = tmpTimeI[i];
+					}
+				}
+			}
+		} else {
+			if (step-- == 0) {
+				Complex bin0 = freq[0];
+				if (!halfBinShift) {
+					tmpFreq[0] = {
+						bin0.real() + bin0.imag(),
+						bin0.real() - bin0.imag()
+					};
+				}
+				size_t hSize = complexFft.size(), qSize = hSize/2;
+				for (size_t i = halfBinShift ? 0 : 1; i <= qSize; ++i) {
+					size_t conjI = halfBinShift ? (hSize - 1 - i) : (hSize - i);
+					Complex twiddle = twiddles[i];
+
+					Complex odd = freq[i] + std::conj(freq[conjI]);
+					Complex evenRotMinusI = freq[i] - std::conj(freq[conjI]);
+					Complex evenI = { // Conjugate twiddle
+						evenRotMinusI.real()*twiddle.real() + evenRotMinusI.imag()*twiddle.imag(),
+						evenRotMinusI.imag()*twiddle.real() - evenRotMinusI.real()*twiddle.imag()
+					};
+
+					tmpFreq[i] = odd + evenI;
+					tmpFreq[conjI] = {odd.real() - evenI.real(), evenI.imag() - odd.imag()};
+				}
+			} else if (step < complexFft.steps()) {
+				// Can't just use time as (Complex *), since it might not be aligned properly
+				complexFft.ifft(step, tmpFreq.data(), tmpTime.data());
+			} else {
+				size_t hSize = complexFft.size();
+				if (halfBinShift) {
+					for (size_t i = 0; i < hSize; ++i) {
+						Complex t = tmpTime[i];
+						Complex twist = halfBinTwists[i];
+						time[2*i] = 	t.real()*twist.real() + t.imag()*twist.imag();
+						time[2*i + 1] = t.imag()*twist.real() - t.real()*twist.imag();
+					}
+				} else {
+					for (size_t i = 0; i < hSize; ++i) {
+						time[2*i] = tmpTime[i].real();
+						time[2*i + 1] = tmpTime[i].imag();
+					}
 				}
 			}
 		}

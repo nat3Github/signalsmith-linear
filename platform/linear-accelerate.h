@@ -1,6 +1,11 @@
 //#define ACCELERATE_NEW_LAPACK
 
-#include <Accelerate/Accelerate.h>
+// If possible, only include vecLib, since JUCE has conflicts with vImage
+#if defined(__has_include) && __has_include(<vecLib/vecLib.h>)
+#	include <vecLib/vecLib.h>
+#else
+#	include <Accelerate/Accelerate.h>
+#endif
 
 #ifndef CBLAS_INDEX
 #	define CBLAS_INT __LAPACK_int

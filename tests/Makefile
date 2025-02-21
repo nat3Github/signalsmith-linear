@@ -16,7 +16,7 @@ out/tests: *.cpp *.h ../*.h ../platform/*.h
 	g++ -std=c++11 \
 		-Ofast -DSIGNALSMITH_IGNORE_BROKEN_APPLECLANG \
 		-Wall -Wextra -Wfatal-errors -Wpedantic -pedantic-errors \
-		-framework Accelerate -DSIGNALSMITH_USE_ACCELERATE -DSIGNALSMITH_USE_CBLAS \
+		-framework Accelerate -DSIGNALSMITH_USE_ACCELERATE -DACCELERATE_NEW_LAPACK \
 		main.cpp -o out/tests
 
 out-cmake/tests: CMakeLists.txt *.cpp *.h ../*.h ../platform/*.h
