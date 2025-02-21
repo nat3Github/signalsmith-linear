@@ -9,28 +9,28 @@ namespace signalsmith { namespace linear {
 
 namespace _impl {
 	template<>
-	void complexMul<float>(std::complex<float> *a, const std::complex<float> *b, const std::complex<float> *c, size_t size) {
+	inline void complexMul<float>(std::complex<float> *a, const std::complex<float> *b, const std::complex<float> *c, size_t size) {
 		DSPSplitComplex aSplit = {(float *)a, (float *)a + 1};
 		DSPSplitComplex bSplit = {(float *)b, (float *)b + 1};
 		DSPSplitComplex cSplit = {(float *)c, (float *)c + 1};
 		vDSP_zvmul(&cSplit, 2, &bSplit, 2, &aSplit, 2, size, 1);
 	}
 	template<>
-	void complexMulConj<float>(std::complex<float> *a, const std::complex<float> *b, const std::complex<float> *c, size_t size) {
+	inline void complexMulConj<float>(std::complex<float> *a, const std::complex<float> *b, const std::complex<float> *c, size_t size) {
 		DSPSplitComplex aSplit = {(float *)a, (float *)a + 1};
 		DSPSplitComplex bSplit = {(float *)b, (float *)b + 1};
 		DSPSplitComplex cSplit = {(float *)c, (float *)c + 1};
 		vDSP_zvmul(&cSplit, 2, &bSplit, 2, &aSplit, 2, size, -1);
 	}
 	template<>
-	void complexMul<float>(float *ar, float *ai, const float *br, const float *bi, const float *cr, const float *ci, size_t size) {
+	inline void complexMul<float>(float *ar, float *ai, const float *br, const float *bi, const float *cr, const float *ci, size_t size) {
 		DSPSplitComplex aSplit = {ar, ai};
 		DSPSplitComplex bSplit = {(float *)br, (float *)bi};
 		DSPSplitComplex cSplit = {(float *)cr, (float *)ci};
 		vDSP_zvmul(&cSplit, 1, &bSplit, 1, &aSplit, 1, size, 1);
 	}
 	template<>
-	void complexMulConj<float>(float *ar, float *ai, const float *br, const float *bi, const float *cr, const float *ci, size_t size) {
+	inline void complexMulConj<float>(float *ar, float *ai, const float *br, const float *bi, const float *cr, const float *ci, size_t size) {
 		DSPSplitComplex aSplit = {ar, ai};
 		DSPSplitComplex bSplit = {(float *)br, (float *)bi};
 		DSPSplitComplex cSplit = {(float *)cr, (float *)ci};
@@ -39,28 +39,28 @@ namespace _impl {
 	
 	// doubles
 	template<>
-	void complexMul<double>(std::complex<double> *a, const std::complex<double> *b, const std::complex<double> *c, size_t size) {
+	inline void complexMul<double>(std::complex<double> *a, const std::complex<double> *b, const std::complex<double> *c, size_t size) {
 		DSPDoubleSplitComplex aSplit = {(double *)a, (double *)a + 1};
 		DSPDoubleSplitComplex bSplit = {(double *)b, (double *)b + 1};
 		DSPDoubleSplitComplex cSplit = {(double *)c, (double *)c + 1};
 		vDSP_zvmulD(&cSplit, 2, &bSplit, 2, &aSplit, 2, size, 1);
 	}
 	template<>
-	void complexMulConj<double>(std::complex<double> *a, const std::complex<double> *b, const std::complex<double> *c, size_t size) {
+	inline void complexMulConj<double>(std::complex<double> *a, const std::complex<double> *b, const std::complex<double> *c, size_t size) {
 		DSPDoubleSplitComplex aSplit = {(double *)a, (double *)a + 1};
 		DSPDoubleSplitComplex bSplit = {(double *)b, (double *)b + 1};
 		DSPDoubleSplitComplex cSplit = {(double *)c, (double *)c + 1};
 		vDSP_zvmulD(&cSplit, 2, &bSplit, 2, &aSplit, 2, size, -1);
 	}
 	template<>
-	void complexMul<double>(double *ar, double *ai, const double *br, const double *bi, const double *cr, const double *ci, size_t size) {
+	inline void complexMul<double>(double *ar, double *ai, const double *br, const double *bi, const double *cr, const double *ci, size_t size) {
 		DSPDoubleSplitComplex aSplit = {ar, ai};
 		DSPDoubleSplitComplex bSplit = {(double *)br, (double *)bi};
 		DSPDoubleSplitComplex cSplit = {(double *)cr, (double *)ci};
 		vDSP_zvmulD(&cSplit, 1, &bSplit, 1, &aSplit, 1, size, 1);
 	}
 	template<>
-	void complexMulConj<double>(double *ar, double *ai, const double *br, const double *bi, const double *cr, const double *ci, size_t size) {
+	inline void complexMulConj<double>(double *ar, double *ai, const double *br, const double *bi, const double *cr, const double *ci, size_t size) {
 		DSPDoubleSplitComplex aSplit = {ar, ai};
 		DSPDoubleSplitComplex bSplit = {(double *)br, (double *)bi};
 		DSPDoubleSplitComplex cSplit = {(double *)cr, (double *)ci};
