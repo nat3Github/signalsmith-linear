@@ -6,7 +6,7 @@
 namespace signalsmith { namespace linear {
 
 /// A self-normalising STFT, with variable position/window for output blocks
-template<typename Sample, bool splitComputation=true, bool modified=false>
+template<typename Sample, bool splitComputation=false, bool modified=false>
 struct DynamicSTFT {
 	RealFFT<Sample, splitComputation, modified> fft;
 
@@ -251,14 +251,14 @@ struct DynamicSTFT {
 		}
 	}
 	size_t analyseSteps() const {
-		return _analysisChannels*(fft.steps() + 1);
+		return splitComputation ? _analysisChannels*(fft.steps() + 1) : _analysisChannels;
 	}
 	void analyseStep(size_t step, std::size_t samplesInPast=0) {
-		size_t fftSteps = fft.steps();
+		size_t fftSteps = splitComputation ? fft.steps() : 0;
 		size_t channel = step/(fftSteps + 1);
 		step -= channel*(fftSteps + 1);
 		
-		if (step == 0) { // extra step at start of each channel: copy windowed input into buffer
+		if (step-- == 0) { // extra step at start of each channel: copy windowed input into buffer
 			size_t offsetPos = (_inputLengthSamples*2 + input.pos - _blockSamples - samplesInPast)%_inputLengthSamples;
 			size_t inputWrapIndex = _inputLengthSamples - offsetPos;
 			size_t chunk1 = std::min(_analysisOffset, inputWrapIndex);
@@ -293,10 +293,13 @@ struct DynamicSTFT {
 			for (size_t i = _blockSamples - _analysisOffset; i < _fftSamples - _analysisOffset; ++i) {
 				timeBuffer[i] = 0;
 			}
-			return;
+			if (splitComputation) return;
 		}
-		--step;
-		fft.fft(step, timeBuffer.data(), spectrum(channel));
+		if (splitComputation) {
+			fft.fft(step, timeBuffer.data(), spectrum(channel));
+		} else {
+			fft.fft(timeBuffer.data(), spectrum(channel));
+		}
 	}
 
 	void synthesise() {
@@ -305,51 +308,57 @@ struct DynamicSTFT {
 		}
 	}
 	size_t synthesiseSteps() const {
-		return _synthesisChannels*(fft.steps() + 1) + 1;
+		return splitComputation ? (_synthesisChannels*(fft.steps() + 1) + 1) : _synthesisChannels;
 	}
 	void synthesiseStep(size_t step) {
 		if (step == 0) { // Extra first step which adds in the effective gain for a pure analysis-synthesis cycle
 			addWindowProduct();
-			return;
+			if (splitComputation) return;
 		}
-		--step;
+		if (splitComputation) --step;
 
-		size_t fftSteps = fft.steps();
+		size_t fftSteps = splitComputation ? fft.steps() : 0;
 		size_t channel = step/(fftSteps + 1);
 		step -= channel*(fftSteps + 1);
 
-		if (step == fftSteps) { // extra step after each channel's FFT
-			Sample *buffer = output.buffer.data() + channel*_blockSamples;
-			size_t outputWrapIndex = _blockSamples - output.pos;
-			size_t chunk1 = std::min(_synthesisOffset, outputWrapIndex);
-			size_t chunk2 = std::min(_blockSamples, std::max(_synthesisOffset, outputWrapIndex));
-			
-			for (size_t i = 0; i < chunk1; ++i) {
-				Sample w = modified ? -_synthesisWindow[i] : _synthesisWindow[i];
-				size_t ti = i + (_fftSamples - _synthesisOffset);
-				size_t bi = output.pos + i;
-				buffer[bi] += timeBuffer[ti]*w;
-			}
-			for (size_t i = chunk1; i < _synthesisOffset; ++i) {
-				Sample w = modified ? -_synthesisWindow[i] : _synthesisWindow[i];
-				size_t ti = i + (_fftSamples - _synthesisOffset);
-				size_t bi = i + output.pos - _blockSamples;
-				buffer[bi] += timeBuffer[ti]*w;
-			}
-			for (size_t i = _synthesisOffset; i < chunk2; ++i) {
-				Sample w = _synthesisWindow[i];
-				size_t ti = i - _synthesisOffset;
-				size_t bi = output.pos + i;
-				buffer[bi] += timeBuffer[ti]*w;
-			}
-			for (size_t i = chunk2; i < _blockSamples; ++i) {
-				Sample w = _synthesisWindow[i];
-				size_t ti = i - _synthesisOffset;
-				size_t bi = i + output.pos - _blockSamples;
-				buffer[bi] += timeBuffer[ti]*w;
+		if (splitComputation) {
+			if (step < fftSteps) {
+				fft.ifft(step, spectrum(channel), timeBuffer.data());
+				return;
 			}
 		} else {
-			fft.ifft(step, spectrum(channel), timeBuffer.data());
+			fft.ifft(spectrum(channel), timeBuffer.data());
+		}
+		
+		// extra step after each channel's FFT
+		Sample *buffer = output.buffer.data() + channel*_blockSamples;
+		size_t outputWrapIndex = _blockSamples - output.pos;
+		size_t chunk1 = std::min(_synthesisOffset, outputWrapIndex);
+		size_t chunk2 = std::min(_blockSamples, std::max(_synthesisOffset, outputWrapIndex));
+		
+		for (size_t i = 0; i < chunk1; ++i) {
+			Sample w = modified ? -_synthesisWindow[i] : _synthesisWindow[i];
+			size_t ti = i + (_fftSamples - _synthesisOffset);
+			size_t bi = output.pos + i;
+			buffer[bi] += timeBuffer[ti]*w;
+		}
+		for (size_t i = chunk1; i < _synthesisOffset; ++i) {
+			Sample w = modified ? -_synthesisWindow[i] : _synthesisWindow[i];
+			size_t ti = i + (_fftSamples - _synthesisOffset);
+			size_t bi = i + output.pos - _blockSamples;
+			buffer[bi] += timeBuffer[ti]*w;
+		}
+		for (size_t i = _synthesisOffset; i < chunk2; ++i) {
+			Sample w = _synthesisWindow[i];
+			size_t ti = i - _synthesisOffset;
+			size_t bi = output.pos + i;
+			buffer[bi] += timeBuffer[ti]*w;
+		}
+		for (size_t i = chunk2; i < _blockSamples; ++i) {
+			Sample w = _synthesisWindow[i];
+			size_t ti = i - _synthesisOffset;
+			size_t bi = i + output.pos - _blockSamples;
+			buffer[bi] += timeBuffer[ti]*w;
 		}
 	}
 
