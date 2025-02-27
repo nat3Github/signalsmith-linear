@@ -162,6 +162,14 @@ struct DynamicSTFT {
 		return readOutput(channel, 0, length, outputArray);
 	}
 	void moveOutput(size_t samples) {
+		if (samples == 1) { // avoid all the loops/chunks if we can
+			for (size_t c = 0; c < _synthesisChannels; ++c) {
+				output.buffer[output.pos + c*_blockSamples] = 0;
+			}
+			output.windowProducts[output.pos] = almostZero;
+			if (++output.pos >= _blockSamples) output.pos = 0;
+			return;
+		}
 		// Zero the output buffer as we cross it
 		size_t outputWrapIndex = _blockSamples - output.pos;
 		size_t chunk1 = std::min(samples, outputWrapIndex);
@@ -433,19 +441,19 @@ private:
 		_samplesSinceSynthesis = 0;
 
 		int windowShift = int(_synthesisOffset) - int(_analysisOffset);
-		int wMin = std::max<int>(0, windowShift);
-		int wMax = std::min<int>(_blockSamples, int(_blockSamples) + windowShift);
+		size_t wMin = std::max<ptrdiff_t>(0, windowShift);
+		size_t wMax = std::min<ptrdiff_t>(_blockSamples, int(_blockSamples) + windowShift);
 
 		Sample *windowProduct = output.windowProducts.data();
-		int outputWrapIndex = _blockSamples - output.pos;
-		int chunk1 = std::min<int>(wMax, std::max<int>(wMin, outputWrapIndex));
-		for (int i = wMin; i < chunk1; ++i) {
+		size_t outputWrapIndex = _blockSamples - output.pos;
+		size_t chunk1 = std::min<size_t>(wMax, std::max<size_t>(wMin, outputWrapIndex));
+		for (size_t i = wMin; i < chunk1; ++i) {
 			Sample wa = _analysisWindow[i - windowShift];
 			Sample ws = _synthesisWindow[i];
 			size_t bi = output.pos + i;
 			windowProduct[bi] += wa*ws*_fftSamples;
 		}
-		for (int i = chunk1; i < wMax; ++i) {
+		for (size_t i = chunk1; i < wMax; ++i) {
 			Sample wa = _analysisWindow[i - windowShift];
 			Sample ws = _synthesisWindow[i];
 			size_t bi = i + output.pos - _blockSamples;
@@ -554,9 +562,9 @@ private:
 		}
 	
 		template<typename Data>
-		void fill(Data &&data, int size) const {
+		void fill(Data &&data, size_t size) const {
 			double invSize = 1.0/size;
-			for (int i = 0; i < size; ++i) {
+			for (size_t i = 0; i < size; ++i) {
 				double r = (2*i + 1)*invSize - 1;
 				double arg = std::sqrt(1 - r*r);
 				data[i] = bessel0(beta*arg)*invB0;
@@ -582,11 +590,11 @@ private:
 	
 		/// Fills an arbitrary container
 		template<typename Data>
-		void fill(Data &&data, int size) const {
+		void fill(Data &&data, size_t size) const {
 			double invSize = 1.0/size;
 			double offsetScale = gaussian(1)/(gaussian(3) + gaussian(-1));
 			double norm = 1/(gaussian(0) - 2*offsetScale*(gaussian(2)));
-			for (int i = 0; i < size; ++i) {
+			for (size_t i = 0; i < size; ++i) {
 				double r = (2*i + 1)*invSize - 1;
 				data[i] = norm*(gaussian(r) - offsetScale*(gaussian(r - 2) + gaussian(r + 2)));
 			}
@@ -594,14 +602,14 @@ private:
 	};
 
 	template<typename Data>
-	void forcePerfectReconstruction(Data &&data, int windowLength, int interval) {
-		for (int i = 0; i < interval; ++i) {
+	void forcePerfectReconstruction(Data &&data, size_t windowLength, size_t interval) {
+		for (size_t i = 0; i < interval; ++i) {
 			double sum2 = 0;
-			for (int index = i; index < windowLength; index += interval) {
+			for (size_t index = i; index < windowLength; index += interval) {
 				sum2 += data[index]*data[index];
 			}
 			double factor = 1/std::sqrt(sum2);
-			for (int index = i; index < windowLength; index += interval) {
+			for (size_t index = i; index < windowLength; index += interval) {
 				data[index] *= factor;
 			}
 		}
