@@ -241,15 +241,19 @@ struct DynamicSTFT {
 
 		if (windowShape == acg) {
 			auto window = ApproximateConfinedGaussian::withBandwidth(double(_blockSamples)/defaultInterval);
-			window.fill(_analysisWindow, _blockSamples);
+			window.fill(_synthesisWindow, _blockSamples);
 		} else if (windowShape == kaiser) {
 			auto window = Kaiser::withBandwidth(double(_blockSamples)/defaultInterval, true);
-			window.fill(_analysisWindow,  _blockSamples);
+			window.fill(_synthesisWindow,  _blockSamples);
 		}
 
-		forcePerfectReconstruction(_analysisWindow, _blockSamples, _defaultInterval);
-		for (size_t i = 0; i < _blockSamples; ++i) {
-			_synthesisWindow[i] = _analysisWindow[i];
+		if (_analysisChannels == 0) {
+			for (auto &v : _analysisWindow) v = 1;
+		} else {
+			forcePerfectReconstruction(_synthesisWindow, _blockSamples, _defaultInterval);
+			for (size_t i = 0; i < _blockSamples; ++i) {
+				_analysisWindow[i] = _synthesisWindow[i];
+			}
 		}
 	}
 	
