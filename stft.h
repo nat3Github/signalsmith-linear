@@ -161,6 +161,23 @@ struct DynamicSTFT {
 	void readOutput(size_t channel, size_t length, Sample *outputArray) {
 		return readOutput(channel, 0, length, outputArray);
 	}
+	void replaceOutput(size_t channel, size_t offset, size_t length, const Sample *newOutputArray) {
+		Sample *buffer = output.buffer.data() + channel*_blockSamples;
+		size_t offsetPos = (output.pos + offset)%_blockSamples;
+		size_t outputWrapIndex = _blockSamples - offsetPos;
+		size_t chunk1 = std::min(length, outputWrapIndex);
+		for (size_t i = 0; i < chunk1; ++i) {
+			size_t i2 = offsetPos + i;
+			buffer[i2] = newOutputArray[i]*output.windowProducts[i2];
+		}
+		for (size_t i = chunk1; i < length; ++i) {
+			size_t i2 = i + offsetPos - _blockSamples;
+			buffer[i2] = newOutputArray[i]*output.windowProducts[i2];
+		}
+	}
+	void replaceOutput(size_t channel, size_t length, const Sample *newOutputArray) {
+		return replaceOutput(channel, 0, length, newOutputArray);
+	}
 	void moveOutput(size_t samples) {
 		if (samples == 1) { // avoid all the loops/chunks if we can
 			for (size_t c = 0; c < _synthesisChannels; ++c) {
