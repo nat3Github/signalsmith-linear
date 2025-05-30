@@ -1,0 +1,16 @@
+.{
+    .fingerprint = 0x9a6e7e325f5dad70,
+    .name = .signalsmith_linear,
+    .version = "0.0.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig.zon",
+        "build.zig",
+        "include",
+        "platform",
+        "fft.h",
+        "linear.h",
+        "stfft.h",
+        "LICENSE.txt",
+    },
+}
