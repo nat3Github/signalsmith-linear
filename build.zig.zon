@@ -10,7 +10,7 @@
         "platform",
         "fft.h",
         "linear.h",
-        "stfft.h",
+        "stft.h",
         "LICENSE.txt",
     },
 }
