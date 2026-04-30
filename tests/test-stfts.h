@@ -83,7 +83,7 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 	
 	{
 		std::uniform_real_distribution<double> dist{-1, 1};
-		int maxOffsetWobble = blockSize - maxInterval - 1;
+		int maxOffsetWobble = int(blockSize - maxInterval - 1);
 		stft.analysisOffset(blockSize*2);
 		stft.synthesisOffset(0);
 		while (std::abs(int(stft.analysisOffset()) - int(stft.synthesisOffset())) > maxOffsetWobble) {
@@ -244,13 +244,13 @@ void testStft(size_t channels, size_t blockSize, size_t minInterval, size_t maxI
 
 void compareStfts() {
 	signalsmith::linear::DynamicSTFT<float, false, true> dynamic;
-	dynamic.configure(1, 1, 256, 0);
+	dynamic.configure(1, 1, 255, 0);
 	dynamic.setInterval(45, dynamic.kaiser);
 	
-	signalsmith::spectral::STFT<float> dsp(1, 256, 45);
+	signalsmith::spectral::STFT<float> dsp(1, 255, 45);
 	dsp.setWindow(dsp.kaiser, true);
 	
-	signalsmith::linear::ModifiedRealFFT<float> mrfft(256);
+	signalsmith::linear::ModifiedRealFFT<float> mrfft(255);
 	
 	std::vector<float> input(256), output, tmp(256);
 
@@ -272,7 +272,7 @@ void compareStfts() {
 	
 	auto &windowPlot = figure(0, 1).plot();
 	auto &window1 = windowPlot.line(), &window2 = windowPlot.line();
-	for (size_t i = 0; i < 256; ++i) {
+	for (size_t i = 0; i < 255; ++i) {
 		window1.add(i, dynamic.analysisWindow()[i]);
 		window2.add(i, dsp.window()[i]);
 	}
@@ -280,10 +280,10 @@ void compareStfts() {
 	for (size_t r = 0; r < 10; ++r) {
 		std::rotate(input.begin(), input.begin() + 45, input.end());
 		for (size_t i = 0; i < 45; ++i) {
-			input[256 - 45 + i] = dist(randomEngine);
+			input[255 - 45 + i] = dist(randomEngine);
 		}
 
-		dynamic.writeInput(0, 45, input.data() + 256 - 45);
+		dynamic.writeInput(0, 45, input.data() + 255 - 45);
 		dynamic.moveInput(45);
 		dynamic.analyse();
 		
@@ -303,14 +303,14 @@ void compareStfts() {
 		}
 
 		mrfft.ifft(dynamic.spectrum(0), tmp.data());
-		for (size_t f = 0; f < 256; ++f) {
+		for (size_t f = 0; f < 255; ++f) {
 			inverse1.add(f, tmp[f]);
 		}
 		mrfft.ifft(dsp.spectrum[0], tmp.data());
-		for (size_t f = 0; f < 256; ++f) {
+		for (size_t f = 0; f < 255; ++f) {
 			inverse2.add(f, tmp[f]);
 		}
-		for (size_t f = 0; f < 256; ++f) {
+		for (size_t f = 0; f < 255; ++f) {
 			inputLine.add(f, input[f]);
 		}
 
@@ -325,6 +325,88 @@ void compareStfts() {
 	}
 	
 	figure.write("stft-compare.svg");
+}
+
+void testUnpackedStft(unsigned seed) {
+	signalsmith::linear::DynamicSTFT<float, false, 0> packed;
+	signalsmith::linear::DynamicSTFT<float, false, 2> unpacked;
+	packed.configure(1, 1, 256);
+	unpacked.configure(1, 1, 256);
+	if (unpacked.bands() != packed.bands() + 1) {
+		LOG_EXPR(packed.bands());
+		LOG_EXPR(unpacked.bands());
+		abort();
+	}
+
+	std::default_random_engine randomEngine(seed);
+	std::uniform_int_distribution<size_t> intervalDist{1, 200};
+	std::uniform_real_distribution<float> realDist{-10, 10};
+	
+	std::vector<float> buffer1(256), buffer2(256);
+
+	for (size_t r = 0; r < 10; ++r) {
+		size_t interval = intervalDist(randomEngine);
+		for (size_t i = 0; i < interval; ++i) {
+			buffer1[i] = realDist(randomEngine);
+		}
+		
+		packed.writeInput(0, interval, buffer1.data());
+		unpacked.writeInput(0, interval, buffer1.data());
+		packed.moveInput(interval);
+		unpacked.moveInput(interval);
+		
+		packed.analyse();
+		unpacked.analyse();
+		
+		for (size_t b = 1; b < packed.bands(); ++b) {
+			auto pV = packed.spectrum(0)[b];
+			auto uV = packed.spectrum(0)[b];
+			if (pV != uV) {
+				LOG_EXPR(b);
+				LOG_EXPR(pV);
+				LOG_EXPR(uV);
+				abort();
+			}
+		}
+		auto p0 = packed.spectrum(0)[0];
+		auto u0 = unpacked.spectrum(0)[0];
+		auto uN = unpacked.spectrum(0)[unpacked.bands() - 1];
+		if (p0.real() != u0.real() || u0.imag() != 0 || uN.real() != p0.imag() || uN.imag() != 0) {
+			LOG_EXPR(p0);
+			LOG_EXPR(u0);
+			LOG_EXPR(uN);
+			abort();
+		}
+
+		for (size_t b = 1; b < packed.bands(); ++b) {
+			auto &pV = packed.spectrum(0)[b];
+			auto &uV = packed.spectrum(0)[b];
+			pV = uV = {realDist(randomEngine), realDist(randomEngine)};
+		}
+		p0 = {realDist(randomEngine), realDist(randomEngine)};
+		packed.spectrum(0)[0] = p0;
+		unpacked.spectrum(0)[0] = {p0.real(), realDist(randomEngine)/*discarded*/};
+		unpacked.spectrum(0)[unpacked.bands() - 1] = {p0.imag(), realDist(randomEngine)/*discarded*/};
+
+		packed.synthesise();
+		unpacked.synthesise();
+		
+		// also randomise synthesis interval
+		interval = intervalDist(randomEngine);
+		packed.readOutput(0, interval, buffer1.data());
+		unpacked.readOutput(0, interval, buffer2.data());
+		packed.moveOutput(interval);
+		unpacked.moveOutput(interval);
+		
+		for (size_t i = 0; i < interval; ++i) {
+			if (buffer1[i] != buffer2[i]) {
+				LOG_EXPR(buffer1[i]);
+				LOG_EXPR(buffer2[i]);
+				abort();
+			}
+		}
+	}
+
 }
 
 void testStfts(int, double) {

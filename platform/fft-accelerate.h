@@ -80,6 +80,12 @@ struct Pow2FFT<float> {
 	~Pow2FFT() {
 		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
 	}
+	// Allow move, but not copy
+	Pow2FFT(const Pow2FFT &other) = delete;
+	Pow2FFT(Pow2FFT &&other) : _size(other._size), hasSetup(other.hasSetup), fftSetup(other.fftSetup), log2(other.log2), splitReal(std::move(other.splitReal)), splitImag(std::move(other.splitImag)) {
+		// Avoid double-free
+		other.hasSetup = false;
+	}
 
 	void resize(size_t size) {
 		_size = size;
@@ -93,7 +99,7 @@ struct Pow2FFT<float> {
 		splitImag.resize(size);
 		log2 = std::round(std::log2(size));
 		fftSetup = vDSP_create_fftsetup(log2, FFT_RADIX2);
-		hasSetup = true;
+		hasSetup = fftSetup;
 	}
 
 	void fft(const Complex* input, Complex* output) {
@@ -140,6 +146,12 @@ struct Pow2RealFFT<float> {
 	~Pow2RealFFT() {
 		if (hasSetup) vDSP_destroy_fftsetup(fftSetup);
 	}
+	// Allow move, but not copy
+	Pow2RealFFT(const Pow2RealFFT &other) = delete;
+	Pow2RealFFT(Pow2RealFFT &&other) : _size(other._size), hasSetup(other.hasSetup), fftSetup(other.fftSetup), log2(other.log2), splitReal(std::move(other.splitReal)), splitImag(std::move(other.splitImag)) {
+		// Avoid double-free
+		other.hasSetup = false;
+	}
 
 	void resize(size_t size) {
 		_size = size;
@@ -153,7 +165,7 @@ struct Pow2RealFFT<float> {
 		splitImag.resize(size);
 		log2 = std::log2(size);
 		fftSetup = vDSP_create_fftsetup(log2, FFT_RADIX2);
-		hasSetup = true;
+		hasSetup = fftSetup;
 	}
 
 	void fft(const float* input, Complex* output) {
@@ -219,7 +231,7 @@ struct Pow2FFT<double> {
 
 		log2 = std::round(std::log2(size));
 		fftSetup = vDSP_create_fftsetupD(log2, FFT_RADIX2);
-		hasSetup = true;
+		hasSetup = fftSetup;
 
 		splitReal.resize(size);
 		splitImag.resize(size);
@@ -282,7 +294,7 @@ struct Pow2RealFFT<double> {
 		splitImag.resize(size);
 		log2 = std::log2(size);
 		fftSetup = vDSP_create_fftsetupD(log2, FFT_RADIX2);
-		hasSetup = true;
+		hasSetup = fftSetup;
 	}
 
 	void fft(const double* input, Complex* output) {

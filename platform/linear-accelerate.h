@@ -7,27 +7,13 @@
 #	include <Accelerate/Accelerate.h>
 #endif
 
-#ifndef CBLAS_INDEX
-#	define CBLAS_INT __LAPACK_int
-#	define CBLAS_INDEX size_t
-#	define CBLAS_S __LAPACK_float_complex
-#	define CBLAS_Z __LAPACK_double_complex
-#else // old Accelerate version
-#	define CBLAS_INT int
-#	define CBLAS_S void
-#	define CBLAS_Z void
-#endif
-extern "C" {
-	void cblas_scopy(const CBLAS_INT N, const float *X, const CBLAS_INT incX, float *Y, const CBLAS_INT incY);
-	void cblas_dcopy(const CBLAS_INT N, const double *X, const CBLAS_INT incX, double *Y, const CBLAS_INT incY);
-	void cblas_ccopy(const CBLAS_INT N, const CBLAS_S *X, const CBLAS_INT incX, CBLAS_S *Y, const CBLAS_INT incY);
-	void cblas_zcopy(const CBLAS_INT N, const CBLAS_Z *X, const CBLAS_INT incX, CBLAS_Z *Y, const CBLAS_INT incY);
-};
+#include <cstring> // std::memcpy
+#include <iostream> // We log to stderr when an expression is unoptimised
 
 namespace signalsmith { namespace linear {
 
 template<class T>
-std::string typeName() {
+static std::string typeName() {
 	return typeid(T).name();
 }
 template<>
@@ -119,7 +105,7 @@ private:
 	template<class V, class Expr>
 	void fillBasic(SplitPointer<V> pointer, Expr expr, size_t size) {
 		basicFillWarning<Expr>();
-		using Complex = decltype(pointer[0]);
+		using Complex = typename SplitPointer<V>::Complex;
 		for (size_t i = 0; i < size; ++i) {
 			Complex c = expr.get(i);
 			pointer.real[i] = c.real();
@@ -151,30 +137,73 @@ private:
 	
 	// Copying from existing pointer
 	void fillExpr(RealPointer<float> pointer, expression::ReadableReal<float> expr, size_t size) {
-		cblas_scopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+		std::memcpy(pointer, expr.pointer, size*sizeof(float));
 	}
 	void fillExpr(RealPointer<float> pointer, WritableReal<float> expr, size_t size) {
-		cblas_scopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+		std::memcpy(pointer, expr.pointer, size*sizeof(float));
 	}
 	void fillExpr(RealPointer<double> pointer, expression::ReadableReal<double> expr, size_t size) {
-		cblas_dcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+		std::memcpy(pointer, expr.pointer, size*sizeof(double));
 	}
 	void fillExpr(RealPointer<double> pointer, WritableReal<double> expr, size_t size) {
-		cblas_dcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+		std::memcpy(pointer, expr.pointer, size*sizeof(double));
 	}
 	void fillExpr(ComplexPointer<float> pointer, expression::ReadableComplex<float> expr, size_t size) {
-		cblas_ccopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+		std::memcpy(pointer, expr.pointer, size*sizeof(std::complex<float>));
 	}
 	void fillExpr(ComplexPointer<float> pointer, WritableComplex<float> expr, size_t size) {
-		cblas_ccopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+		std::memcpy(pointer, expr.pointer, size*sizeof(std::complex<float>));
 	}
 	void fillExpr(ComplexPointer<double> pointer, expression::ReadableComplex<double> expr, size_t size) {
-		cblas_zcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+		std::memcpy(pointer, expr.pointer, size*sizeof(std::complex<double>));
 	}
 	void fillExpr(ComplexPointer<double> pointer, WritableComplex<double> expr, size_t size) {
-		cblas_zcopy(CBLAS_INT(size), expr.pointer, 1, pointer, 1);
+		std::memcpy(pointer, expr.pointer, size*sizeof(std::complex<double>));
 	}
 
+	// Real part of a split pointer
+	void fillExpr(RealPointer<float> pointer, expression::Real<expression::ReadableSplit<float>> expr, size_t size) {
+		std::memcpy(pointer, expr.a.pointer.real, size*sizeof(float));
+	}
+	void fillExpr(RealPointer<double> pointer, expression::Real<expression::ReadableSplit<double>> expr, size_t size) {
+		std::memcpy(pointer, expr.a.pointer.real, size*sizeof(double));
+	}
+	void fillExpr(RealPointer<float> pointer, expression::Real<WritableSplit<float>> expr, size_t size) {
+		std::memcpy(pointer, expr.a.pointer.real, size*sizeof(float));
+	}
+	void fillExpr(RealPointer<double> pointer, expression::Real<WritableSplit<double>> expr, size_t size) {
+		std::memcpy(pointer, expr.a.pointer.real, size*sizeof(double));
+	}
+	// Imaginary part
+	void fillExpr(RealPointer<float> pointer, expression::Imag<expression::ReadableSplit<float>> expr, size_t size) {
+		std::memcpy(pointer, expr.a.pointer.imag, size*sizeof(float));
+	}
+	void fillExpr(RealPointer<double> pointer, expression::Imag<expression::ReadableSplit<double>> expr, size_t size) {
+		std::memcpy(pointer, expr.a.pointer.imag, size*sizeof(double));
+	}
+	void fillExpr(RealPointer<float> pointer, expression::Imag<WritableSplit<float>> expr, size_t size) {
+		std::memcpy(pointer, expr.a.pointer.imag, size*sizeof(float));
+	}
+	void fillExpr(RealPointer<double> pointer, expression::Imag<WritableSplit<double>> expr, size_t size) {
+		std::memcpy(pointer, expr.a.pointer.imag, size*sizeof(double));
+	}
+
+	// Complex norm of a split pointer - rephrased as (r*r + i*i)
+	template<class V>
+	void fillExpr(RealPointer<V> pointer, expression::Norm<expression::ReadableSplit<V>> expr, size_t size) {
+		auto real = expression::ReadableReal<V>(expr.a.pointer.real);
+		auto imag = expression::ReadableReal<V>(expr.a.pointer.imag);
+		auto newExpr = expression::makeAdd(expression::makeMul(real, real), expression::makeMul(imag, imag));
+		return fillExpr(pointer, newExpr, size);
+	}
+	template<class V>
+	void fillExpr(RealPointer<V> pointer, expression::Norm<WritableSplit<V>> expr, size_t size) {
+		auto real = expression::ReadableReal<V>(expr.a.pointer.real);
+		auto imag = expression::ReadableReal<V>(expr.a.pointer.imag);
+		auto newExpr = expression::makeAdd(expression::makeMul(real, real), expression::makeMul(imag, imag));
+		return fillExpr(pointer, newExpr, size);
+	}
+	
 	// Filling with a constant
 	template<class V>
 	void fillExpr(RealPointer<float> pointer, expression::ConstantExpr<V> expr, size_t size) {
@@ -469,6 +498,7 @@ private:
 		fillMul(pointer, expression::makeMul(expr.a, recipB), size);
 	}
 #undef SIGNALSMITH_AUDIO_LINEAR_TREE2FLIP_RRR
+#undef SIGNALSMITH_AUDIO_LINEAR_TREE2COMM_RRkR
 
 // R x R -> R operators in vForce
 #define SIGNALSMITH_AUDIO_LINEAR_TREE2_RRR(Name, vForce_float, vForce_double) \
@@ -531,6 +561,31 @@ private:
 //	SIGNALSMITH_AUDIO_LINEAR_TREE3COMMUTATIVE_RRR(Sub, Mul, vDSP_vsbm, 2)
 //	SIGNALSMITH_AUDIO_LINEAR_TREE3L_RRR(Mul, Sub, vDSP_vmsb, 3)
 
+// Forwards .fillExpr() to .fillName(), but doesn't define that
+#define SIGNALSMITH_AUDIO_LINEAR_OP2_C(Name) \
+public: \
+	template<class A, class B> \
+	void fillExpr(ComplexPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+	template<class A, class B> \
+	void fillExpr(ComplexPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+	template<class A, class B> \
+	void fillExpr(SplitPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+	template<class A, class B> \
+	void fillExpr(SplitPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
+		fill##Name(pointer, expr, size); \
+	} \
+private:
+//	SIGNALSMITH_AUDIO_LINEAR_OP2_C(Add)
+//	SIGNALSMITH_AUDIO_LINEAR_OP2_C(Sub)
+//	SIGNALSMITH_AUDIO_LINEAR_OP2_C(Mul)
+//	SIGNALSMITH_AUDIO_LINEAR_OP2_C(Div)
+
 protected:
 	CachedResults<LinearImpl, 32> cached;
 
@@ -561,7 +616,3 @@ protected:
 };
 
 }}; // namespace
-
-#undef CBLAS_INT
-#undef CBLAS_S
-#undef CBLAS_Z

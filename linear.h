@@ -5,6 +5,13 @@
 #	error Apple Clang 16.0.0 generates incorrect SIMD for ARM. If you HAVE to use this version of Clang, turn off -ffast-math.
 #endif
 
+#if defined(_MSC_VER)
+// MSVC can misreport is_trivially_copyable for CRTP bases; approximate intent.
+#	define SIGNALSMITH_IS_TRIVIALLY_COPYABLE(T) (std::is_trivially_copy_constructible<T>::value && std::is_trivially_destructible<T>::value)
+#else
+#	define SIGNALSMITH_IS_TRIVIALLY_COPYABLE(T) std::is_trivially_copyable<T>::value
+#endif
+
 #ifndef M_PI
 #	define M_PI 3.14159265358979323846
 #endif
@@ -42,6 +49,8 @@ struct ConstSplitPointer {
 
 template<typename V>
 struct SplitPointer {
+	using Complex = std::complex<V>;
+
 	RealPointer<V> real, imag;
 	SplitPointer(RealPointer<V> real, RealPointer<V> imag) : real(real), imag(imag) {}
 	operator ConstSplitPointer<V>() {
@@ -49,7 +58,49 @@ struct SplitPointer {
 	}
 
 	// Array-like access for convenience
-	const std::complex<V> operator[](std::ptrdiff_t i) const {
+	const Complex operator[](std::ptrdiff_t i) const {
+		return {real[i], imag[i]};
+	}
+	
+	// Assignable (if not const) and converts to `std::complex<V>`
+	struct Value : public Complex {
+		Value(V &_real, V &_imag) : Complex(_real, _imag),  _real(_real), _imag(_imag) {}
+	
+		V real() const {
+			return _real;
+		}
+		void real(V v) {
+			_real = v;
+			Complex::real(v);
+		}
+		V imag() const {
+			return _imag;
+		}
+		void imag(V v) {
+			_imag = v;
+			Complex::imag(v);
+		}
+
+#define LINEAR_SPLIT_POINTER_ASSIGNMENT_OP(OP) \
+		Value & operator OP(const std::complex<V> &other) { \
+			std::complex<V>::operator OP(other); \
+			_real = Complex::real(); \
+			_imag = Complex::imag(); \
+			return *this; \
+		}
+		LINEAR_SPLIT_POINTER_ASSIGNMENT_OP(=);
+		LINEAR_SPLIT_POINTER_ASSIGNMENT_OP(+=);
+		LINEAR_SPLIT_POINTER_ASSIGNMENT_OP(-=);
+		LINEAR_SPLIT_POINTER_ASSIGNMENT_OP(*=);
+		LINEAR_SPLIT_POINTER_ASSIGNMENT_OP(/=);
+#undef LINEAR_SPLIT_POINTER_ASSIGNMENT_OP
+
+	private:
+		V &_real;
+		V &_imag;
+	};
+
+	Value operator[](std::ptrdiff_t i) {
 		return {real[i], imag[i]};
 	}
 };
@@ -76,17 +127,18 @@ struct WritableExpression;
 //		return typeid(Class).name(); \
 //	}
 
-
 // Expression templates, which always hold const pointers
 namespace expression {
 	// All base Exprs inherit from this, so we can SFINAE-test for them
 	struct Base {};
-	void mustBeExpr(const Base &) {}
+	inline void mustBeExpr(const Base &) {}
 
 	template<typename V>
 	struct ConstantExpr : public Base {
 		EXPRESSION_NAME(Constant, "V");
 		V value;
+
+		static_assert(SIGNALSMITH_IS_TRIVIALLY_COPYABLE(V), "ConstantExpr<V> values must be trivially copyable");
 
 		ConstantExpr(V value) : value(value) {}
 		
@@ -94,10 +146,25 @@ namespace expression {
 			return value;
 		}
 	};
+	
+	template<typename V>
+	using Arithmetic = decltype(std::declval<V>() + std::declval<V>());
+
+	// If the constant is one of our assignable complex proxies, use the basic one instead
+	template<>
+	struct ConstantExpr<typename SplitPointer<float>::Value> : public ConstantExpr<std::complex<float>> {
+		using ConstantExpr<std::complex<float>>::ConstantExpr;
+	};
+	template<>
+	struct ConstantExpr<typename SplitPointer<double>::Value> : public ConstantExpr<std::complex<double>> {
+		using ConstantExpr<std::complex<double>>::ConstantExpr;
+	};
 
 	template<class V, typename=void>
 	struct ExprTest {
-		using Constant = ConstantExpr<V>;
+		using Constant = ConstantExpr<Arithmetic<V>>;
+
+		static_assert(SIGNALSMITH_IS_TRIVIALLY_COPYABLE(Constant), "ConstantExpr<V> must be trivially copyable");
 
 		static Constant wrap(const V &v) {
 			return {v};
@@ -114,9 +181,25 @@ namespace expression {
 	using Constant = typename ExprTest<Expr>::Constant;
 	
 	template<class Expr>
-	auto ensureExpr(const Expr &expr) -> decltype(ExprTest<Expr>::wrap(expr)){
+	auto ensureExpr(const Expr &expr) -> decltype(ExprTest<Expr>::wrap(expr)) {
 		return ExprTest<Expr>::wrap(expr);
 	};
+	
+	// Remove `Expression<>` or `WritableExpression<>` layers
+	template<class E>
+	E unwrapped(E e) {
+		return e;
+	}
+	template<class E>
+	E unwrapped(Expression<E> e) {
+		return e;
+	}
+	template<class E>
+	E unwrapped(WritableExpression<E> e) {
+		return e;
+	}
+	template<class E>
+	using Unwrapped = decltype(unwrapped(std::declval<E>()));
 
 	// Expressions that just read from a pointer
 	template<typename V>
@@ -168,7 +251,7 @@ namespace expression { \
 		} \
 	}; \
 	template<class A> \
-	Name<A> make##Name(A a) { \
+	Name<Unwrapped<A>> make##Name(A a) { \
 		return {a}; \
 	} \
 } \
@@ -197,7 +280,7 @@ namespace expression { \
 		} \
 	}; \
 	template<class A, class B> \
-	Name<A, B> make##Name(A a, B b) { \
+	Name<Unwrapped<A>, Unwrapped<B>> make##Name(A a, B b) { \
 		return {a, b}; \
 	} \
 } \
@@ -224,7 +307,7 @@ namespace expression {
 	template<class A> \
 	struct Name; \
 	template<class A> \
-	Name<A> make##Name(A a) { \
+	Name<Unwrapped<A>> make##Name(A a) { \
 		return {a}; \
 	} \
 	template<class A> \
@@ -258,6 +341,10 @@ namespace expression {
 	}
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Norm, fastNorm)
 
+	// Single-argument functions
+	// Abs, Norm, Exp, Exp2, Log, Log2, Log10, Sqrt, Cbrt, Ceil, Floor, Trunc, Round, Conj, Real, Imag, Arg, Proj, Sin, Cos, Tan, Asin, Acos, Atan, Sinh, Cosh, Tanh, Asinh, Acosh, Atanh, Erf, Erfc, Tgamma, Lgamma
+
+	// .abs and .norm are handled above
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp, std::exp)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp2, std::exp2)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log, std::log)
@@ -265,72 +352,116 @@ namespace expression {
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log10, std::log10)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sqrt, std::sqrt)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Cbrt, std::cbrt)
-	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Floor, std::floor)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Ceil, std::ceil)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Floor, std::floor)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Trunc, std::trunc)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Round, std::round)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Conj, std::conj)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Real, std::real)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Imag, std::imag)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Arg, std::arg)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Proj, std::proj)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sin, std::sin)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Cos, std::cos)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Tan, std::tan)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Asin, std::asin)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Acos, std::acos)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Atan, std::atan)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sinh, std::sinh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Cosh, std::cosh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Tanh, std::tanh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Asinh, std::asinh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Acosh, std::acosh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Atanh, std::atanh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Erf, std::erf)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Erfc, std::erfc)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Tgamma, std::tgamma)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Lgamma, std::lgamma)
 #undef SIGNALSMITH_AUDIO_LINEAR_FUNC1
+
+#define SIGNALSMITH_AUDIO_LINEAR_FUNC2(Name, func) \
+	template<typename VA, typename VB> \
+	auto common##Name(VA a, VB b) -> decltype(func((decltype(a + b))a, (decltype(a + b))b)) { \
+		return func((decltype(a + b))a, (decltype(a + b))b); \
+	} \
+	template<class A, class B> \
+	struct Name : public Base { \
+		EXPRESSION_NAME(Name, (#Name "<") + A::name() + "," + B::name() + ">"); \
+		A a; \
+		B b; \
+		Name(const A &a, const B &b) : a(a), b(b) {} \
+		auto get(std::ptrdiff_t i) const -> decltype(common##Name(a.get(i), b.get(i))) const { \
+			return common##Name(a.get(i), b.get(i)); \
+		} \
+	}; \
+	template<class A, class B> \
+	Name<Unwrapped<A>, Unwrapped<B>> make##Name(A a, B b) { \
+		return {a, b}; \
+	}
+	// Min, Max, Dim, Pow, Atan2, Hypot, Copysign, Polar
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Max, std::fmax);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Min, std::fmin);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Dim, std::fdim);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Pow, std::pow);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Atan2, std::atan2);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Hypot, std::hypot);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Copysign, std::copysign);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Polar, std::polar);
+#undef SIGNALSMITH_AUDIO_LINEAR_FUNC2
+
 } // expression::
 
 template<class BaseExpr>
 struct Expression : public BaseExpr {
 	template<class ...Args>
 	Expression(Args &&...args) : BaseExpr(std::forward<Args>(args)...) {
-		static_assert(std::is_trivially_copyable<Expression>::value, "Expression<> must be trivially copyable");
-		static_assert(std::is_trivially_copyable<BaseExpr>::value, "BaseExpr must be trivially copyable");
+		static_assert(SIGNALSMITH_IS_TRIVIALLY_COPYABLE(BaseExpr), "BaseExpr must be trivially copyable");
+		static_assert(SIGNALSMITH_IS_TRIVIALLY_COPYABLE(Expression), "Expression<> must be trivially copyable");
 	}
 
 	auto operator[](std::ptrdiff_t i) -> decltype(BaseExpr::get(i)) const {
 		return BaseExpr::get(i);
 	}
 
-	const Expression<expression::Abs<BaseExpr>> abs() const {
-		return {*this};
+#define SIGNALSMITH_AUDIO_LINEAR_FUNC1(ExprName, methodName) \
+	const Expression<expression::ExprName<BaseExpr>> methodName() const { \
+		return {*this}; \
 	}
-	const Expression<expression::Norm<BaseExpr>> norm() const {
-		return {*this};
-	}
-	const Expression<expression::Exp<BaseExpr>> exp() const {
-		return {*this};
-	}
-	const Expression<expression::Exp2<BaseExpr>> exp2() const {
-		return {*this};
-	}
-	const Expression<expression::Log<BaseExpr>> log() const {
-		return {*this};
-	}
-	const Expression<expression::Log2<BaseExpr>> log2() const {
-		return {*this};
-	}
-	const Expression<expression::Log10<BaseExpr>> log10() const {
-		return {*this};
-	}
-	const Expression<expression::Sqrt<BaseExpr>> sqrt() const {
-		return {*this};
-	}
-	const Expression<expression::Cbrt<BaseExpr>> cbrt() const {
-		return {*this};
-	}
-	const Expression<expression::Conj<BaseExpr>> conj() const {
-		return {*this};
-	}
-	const Expression<expression::Real<BaseExpr>> real() const {
-		return {*this};
-	}
-	const Expression<expression::Imag<BaseExpr>> imag() const {
-		return {*this};
-	}
-	const Expression<expression::Arg<BaseExpr>> arg() const {
-		return {*this};
-	}
-	const Expression<expression::Floor<BaseExpr>> floor() const {
-		return {*this};
-	}
-	const Expression<expression::Ceil<BaseExpr>> ceil() const {
-		return {*this};
-	}
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Abs, abs)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Norm, norm)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp, exp)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp2, exp2)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log, log)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log2, log2)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log10, log10)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sqrt, sqrt)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Cbrt, cbrt)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Ceil, ceil)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Floor, floor)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Trunc, trunc)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Round, round)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Conj, conj)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Real, real)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Imag, imag)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Arg, arg)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Proj, proj)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sin, sin)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Cos, cos)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Tan, tan)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Asin, asin)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Acos, acos)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Atan, atan)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sinh, sinh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Cosh, cosh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Tanh, tanh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Asinh, asinh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Acosh, acosh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Atanh, atanh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Erf, erf)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Erfc, erfc)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Tgamma, tgamma)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Lgamma, lgamma)
+#undef SIGNALSMITH_AUDIO_LINEAR_FUNC1
 };
 template<class BaseExpr>
 struct WritableExpression : public Expression<BaseExpr> {
@@ -347,6 +478,25 @@ struct WritableExpression : public Expression<BaseExpr> {
 	WritableExpression & operator=(const WritableExpression &expr) {
 		this->linear.fill(this->pointer, expr, this->size);
 		return *this;
+	}
+#define SIGNALSMITH_AUDIO_ASSIGNMENT_OP(assignOp, binaryOp) \
+	template<class E>\
+	WritableExpression & operator assignOp(const E &expr) { \
+		return *this = (*this) binaryOp expr; \
+	}
+	SIGNALSMITH_AUDIO_ASSIGNMENT_OP(+=, +);
+	SIGNALSMITH_AUDIO_ASSIGNMENT_OP(-=, -);
+	SIGNALSMITH_AUDIO_ASSIGNMENT_OP(*=, *);
+	SIGNALSMITH_AUDIO_ASSIGNMENT_OP(/=, /);
+#undef SIGNALSMITH_AUDIO_ASSIGNMENT_OP
+
+	// Use the pointer's `operator[]` instead of the expression
+	auto operator[](std::ptrdiff_t i) -> decltype(this->pointer[i]) {
+		return this->pointer[i];
+	}
+
+	auto operator[](std::ptrdiff_t i) const -> decltype(this->pointer[i]) {
+		return this->pointer[i];
 	}
 };
 
@@ -630,7 +780,7 @@ struct LinearImplBase {
 		RealPointer<V> pointer;
 		size_t size;
 		WritableReal(Linear &linear, RealPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {
-			static_assert(std::is_trivially_copyable<WritableReal>::value, "must be trivially copyable");
+			static_assert(SIGNALSMITH_IS_TRIVIALLY_COPYABLE(WritableReal), "must be trivially copyable");
 		}
 		
 		operator expression::ReadableReal<V>() const {
@@ -638,6 +788,13 @@ struct LinearImplBase {
 		}
 		
 		V get(std::ptrdiff_t i) const {
+			return pointer[i];
+		}
+
+		V & operator[](std::ptrdiff_t i) {
+			return pointer[i];
+		}
+		const V & operator[](std::ptrdiff_t i) const {
 			return pointer[i];
 		}
 	};
@@ -656,6 +813,13 @@ struct LinearImplBase {
 		std::complex<V> get(std::ptrdiff_t i) const {
 			return pointer[i];
 		}
+
+		std::complex<V> & operator[](std::ptrdiff_t i) {
+			return pointer[i];
+		}
+		const std::complex<V> & operator[](std::ptrdiff_t i) const {
+			return pointer[i];
+		}
 	};
 	template<typename V>
 	struct WritableSplit {
@@ -672,7 +836,25 @@ struct LinearImplBase {
 		std::complex<V> get(std::ptrdiff_t i) const {
 			return {pointer.real[i], pointer.imag[i]};
 		}
+		auto operator[](std::ptrdiff_t i) -> decltype(pointer[i]) {
+			return pointer[i];
+		}
+		auto operator[](std::ptrdiff_t i) const -> decltype(pointer[i]) {
+			return pointer[i];
+		}
 	};
+
+	// Arithmetic values get turned into constants
+	template<typename V, typename=typename std::enable_if<std::is_arithmetic<V>::value, V>::type>
+	Expression<expression::Constant<V>> wrap(V v) {
+		return {v};
+	}
+
+	// Pass `Expression`s through
+	template<class V>
+	Expression<V> wrap(Expression<V> expr) {
+		return expr;
+	}
 
 	// Wrap a pointer as an expression
 	template<typename V>
@@ -687,6 +869,10 @@ struct LinearImplBase {
 	Expression<expression::ReadableSplit<V>> wrap(ConstSplitPointer<V> pointer) {
 		return {pointer};
 	}
+	template<typename V>
+	Expression<expression::ReadableSplit<V>> wrap(ConstRealPointer<V> real, ConstRealPointer<V> imag) {
+		return {ConstSplitPointer<V>{real, imag}};
+	}
 
 	// When a length is supplied, make it writable
 	template<typename V>
@@ -700,6 +886,10 @@ struct LinearImplBase {
 	template<typename V>
 	WritableExpression<WritableSplit<V>> wrap(SplitPointer<V> pointer, size_t size) {
 		return {self(), pointer, size};
+	}
+	template<typename V>
+	WritableExpression<WritableSplit<V>> wrap(RealPointer<V> real, RealPointer<V> imag, size_t size) {
+		return {self(), SplitPointer<V>{real, imag}, size};
 	}
 
 	template<typename V>
@@ -762,6 +952,63 @@ struct LinearImplBase {
 		return self().fill(pointer, (Expr &)expr, size);
 	};
 
+
+#define SIGNALSMITH_AUDIO_LINEAR_FUNC1(ExprName, methodName) \
+	template<class A> \
+	auto methodName(A a) -> Expression<decltype(expression::make##ExprName(wrap(a)))> { \
+		return expression::make##ExprName(wrap(a)); \
+	}
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Abs, abs)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Norm, norm)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp, exp)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Exp2, exp2)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log, log)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log2, log2)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Log10, log10)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sqrt, sqrt)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Cbrt, cbrt)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Ceil, ceil)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Floor, floor)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Trunc, trunc)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Round, round)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Conj, conj)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Real, real)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Imag, imag)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Arg, arg)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Proj, proj)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sin, sin)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Cos, cos)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Tan, tan)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Asin, asin)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Acos, acos)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Atan, atan)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Sinh, sinh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Cosh, cosh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Tanh, tanh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Asinh, asinh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Acosh, acosh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Atanh, atanh)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Erf, erf)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Erfc, erfc)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Tgamma, tgamma)
+	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Lgamma, lgamma)
+#undef SIGNALSMITH_AUDIO_LINEAR_FUNC1
+
+#define SIGNALSMITH_AUDIO_LINEAR_FUNC2(ExprName, methodName) \
+	template<class A, class B> \
+	auto methodName(A a, B b) -> Expression<decltype(expression::make##ExprName(wrap(a), wrap(b)))> { \
+		return expression::make##ExprName(wrap(a), wrap(b)); \
+	}
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Max, max);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Min, min);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Dim, dim);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Pow, pow);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Atan2, atan2);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Hypot, hypot);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Copysign, copysign);
+	SIGNALSMITH_AUDIO_LINEAR_FUNC2(Polar, polar);
+#undef SIGNALSMITH_AUDIO_LINEAR_FUNC2
+
 protected:
 	LinearImplBase(Linear *linearThis) {
 		assert((LinearImplBase *)linearThis == this);
@@ -810,10 +1057,14 @@ struct LinearImpl : public LinearImplBase<useLinear> {
 	
 	template<typename V>
 	void reserve(size_t) {}
-	// This makes sure we don't allocate - unless there's an expression with multiple sqrts in it!
+	// Makes sure we don't allocate
 	template<>
 	void reserve<float>(size_t size) {
 		cached.reserveFloats(size);
+	}
+	template<>
+	void reserve<double>(size_t size) {
+		cached.reserveDoubles(size);
 	}
 private:
 	CachedResults<LinearImpl, 32> cached;
@@ -825,12 +1076,8 @@ private:
 #	include "./platform/linear-accelerate.h"
 #elif 0//defined(SIGNALSMITH_USE_IPP)
 #	include "./platform/linear-ipp.h"
-#elif 0//defined(SIGNALSMITH_USE_CBLAS)
-#	include "./platform/linear-cblas.h"
 #endif
 
-#undef SIGNALSMITH_AUDIO_LINEAR_CHUNK_SIZE
-#undef SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH_STEP
-#undef SIGNALSMITH_AUDIO_LINEAR_CHUNK_FOREACH
+#undef SIGNALSMITH_IS_TRIVIALLY_COPYABLE
 
 #endif // include guard
