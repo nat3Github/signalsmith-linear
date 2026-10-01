@@ -286,10 +286,14 @@ struct TestLinear {
 
 		auto &tinyPlot = tinyFigure(tinyPlotIndex%tinyPlotColumns, tinyPlotIndex/tinyPlotColumns).plot(tinyPlotWidth, tinyPlotHeight);
 		tinyPlot.title(plotName, 0.5, -1);
+		signalsmith::plot::Legend *tinyPlotLegend = nullptr;
 		if (!firstTinyPlot) {
 			tinyPlot.x.blank();
 			tinyPlot.y.blank().major(0, "");
 			firstTinyPlot = &tinyPlot;
+			
+			auto &legend = tinyPlot.legend(0, 2); // above the first line
+			tinyPlotLegend = &legend;
 		} else {
 			tinyPlot.x.linkFrom(firstTinyPlot->x);
 			tinyPlot.y.linkFrom(firstTinyPlot->y);
@@ -318,7 +322,9 @@ struct TestLinear {
 			opLegend.add(opPlotLine, config.name);
 			auto &mainLine = config.plot.line();
 			auto &tinyLine = tinyPlot.line();
+			if (tinyPlotLegend) tinyPlotLegend->add(tinyLine, config.name);
 			opLines.push_back(OpLine{mainLine, opPlotLine, tinyLine});
+			
 		}
 		legend->add(opLines[0].main, opName);
 		
@@ -554,7 +560,7 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 		test.addOp<OpVoidAB<Assign, 0, 0>>("Assign");
 		test.addOp<OpVoidAB<Abs, 0, 0>>("Abs");
 		test.addOp<OpVoidAB<Neg, 0, 0>>("Neg");
-		
+
 		test.addOp<OpVoidABC<Add, 0, 0, 0>>("Add");
 		test.addOp<OpVoidABC<Sub, 0, 0, 0>>("Sub");
 		test.addOp<OpVoidABC<Mul, 0, 0, 0>>("Mul");
@@ -576,7 +582,7 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 	}
 	{
 		TestLinear test(maxSize, benchmarkSeconds, "realConstants");
-		
+
 		test.addOp<OpVoidABk<Assign, 0, 0>>("Assign");
 
 		test.addOp<OpVoidABCk<Add, 0, 0, 0>>("Add");
@@ -661,11 +667,11 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 		test.addOp<OpVoidAB<Abs, 3, 2>>("AbsC-Split");
 		test.addOp<OpVoidAB<Abs, 3, 3>>("AbsS-Split");
 		test.addOp<OpVoidAB<Abs, 3, 0>>("AbsR-Split");
-		
+
 		test.addOp<OpVoidABC<Add, 2, 0, 0>>("AddCRR");
 		test.addOp<OpVoidABC<Add, 2, 2, 0>>("AddCCR");
 		test.addOp<OpVoidABC<Add, 2, 0, 2>>("AddCRC");
-		
+
 		test.addOp<OpVoidABC<Sub, 2, 0, 0>>("SubCRR");
 		test.addOp<OpVoidABC<Sub, 2, 2, 0>>("SubCCR");
 		test.addOp<OpVoidABC<Sub, 2, 0, 2>>("SubCRC");
@@ -714,7 +720,7 @@ void testLinear(int maxSize, double benchmarkSeconds) {
 		test.addOp<OpVoidABCD<MulSub2, 0, 0, 0, 0>>("MulSubR2");
 		test.addOp<OpVoidABCD<SubMul, 0, 0, 0, 0>>("SubMulR");
 		test.addOp<OpVoidABCD<SubMul2, 0, 0, 0, 0>>("SubMul2R");
-		
+
 		test.addOp<OpVoidABCDE<AddAddMul, 0, 0, 0, 0, 0>>("AddAddMul");
 		test.addOp<OpVoidABCDE<AddSubMul, 0, 0, 0, 0, 0>>("AddSubMul");
 		test.addOp<OpVoidABCDE<SubAddMul, 0, 0, 0, 0, 0>>("SubAddMul");

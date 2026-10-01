@@ -23,6 +23,11 @@
 #include <vector>
 #include <type_traits>
 #include <functional>
+#include <random>
+
+#ifdef SIGNALSMITH_LOG_WARNINGS
+#	include <iostream>
+#endif
 
 namespace signalsmith { namespace linear {
 
@@ -53,7 +58,7 @@ struct SplitPointer {
 
 	RealPointer<V> real, imag;
 	SplitPointer(RealPointer<V> real, RealPointer<V> imag) : real(real), imag(imag) {}
-	operator ConstSplitPointer<V>() {
+	operator ConstSplitPointer<V>() const {
 		return {real, imag};
 	}
 
@@ -120,22 +125,21 @@ struct WritableExpression;
 		return nameExpr; \
 	}
 
-//#undef EXPRESSION_NAME
-//#include <typeinfo>
-//#define EXPRESSION_NAME(Class, nameExpr) \
-//	static std::string name() { \
-//		return typeid(Class).name(); \
-//	}
-
 // Expression templates, which always hold const pointers
 namespace expression {
 	// All base Exprs inherit from this, so we can SFINAE-test for them
 	struct Base {};
 	inline void mustBeExpr(const Base &) {}
 
+	struct BaseUnary : public Base {};
+	struct BaseBinary : public Base {};
+	struct BasePointer : public Base {};
+	struct BaseConstant : public Base {};
+
 	template<typename V>
-	struct ConstantExpr : public Base {
+	struct ConstantExpr : public BaseConstant {
 		EXPRESSION_NAME(Constant, "V");
+		using Unwrapped = ConstantExpr;
 		V value;
 
 		static_assert(SIGNALSMITH_IS_TRIVIALLY_COPYABLE(V), "ConstantExpr<V> values must be trivially copyable");
@@ -162,11 +166,11 @@ namespace expression {
 
 	template<class V, typename=void>
 	struct ExprTest {
-		using Constant = ConstantExpr<Arithmetic<V>>;
+		using ConstantE = ConstantExpr<Arithmetic<V>>;
 
-		static_assert(SIGNALSMITH_IS_TRIVIALLY_COPYABLE(Constant), "ConstantExpr<V> must be trivially copyable");
+		static_assert(SIGNALSMITH_IS_TRIVIALLY_COPYABLE(ConstantE), "ConstantExpr<V> must be trivially copyable");
 
-		static Constant wrap(const V &v) {
+		static ConstantE wrap(const V &v) {
 			return {v};
 		}
 	};
@@ -178,33 +182,18 @@ namespace expression {
 	};
 	// Constant class, only defined for non-Expr types
 	template<class Expr>
-	using Constant = typename ExprTest<Expr>::Constant;
+	using Constant = typename ExprTest<Expr>::ConstantE;
 	
 	template<class Expr>
 	auto ensureExpr(const Expr &expr) -> decltype(ExprTest<Expr>::wrap(expr)) {
 		return ExprTest<Expr>::wrap(expr);
 	};
-	
-	// Remove `Expression<>` or `WritableExpression<>` layers
-	template<class E>
-	E unwrapped(E e) {
-		return e;
-	}
-	template<class E>
-	E unwrapped(Expression<E> e) {
-		return e;
-	}
-	template<class E>
-	E unwrapped(WritableExpression<E> e) {
-		return e;
-	}
-	template<class E>
-	using Unwrapped = decltype(unwrapped(std::declval<E>()));
 
 	// Expressions that just read from a pointer
 	template<typename V>
-	struct ReadableReal : public Base {
-		EXPRESSION_NAME(ReadableReal, "const V*");
+	struct ReadableReal : public BasePointer {
+		EXPRESSION_NAME(ReadableReal, "V*");
+		using Unwrapped = ReadableReal;
 		ConstRealPointer<V> pointer;
 
 		ReadableReal(ConstRealPointer<V> pointer) : pointer(pointer) {}
@@ -214,8 +203,9 @@ namespace expression {
 		}
 	};
 	template<typename V>
-	struct ReadableComplex : public Base {
-		EXPRESSION_NAME(ReadableComplex, "const VC*");
+	struct ReadableComplex : public BasePointer {
+		EXPRESSION_NAME(ReadableComplex, "VC*");
+		using Unwrapped = ReadableComplex;
 		ConstComplexPointer<V> pointer;
 
 		ReadableComplex(ConstComplexPointer<V> pointer) : pointer(pointer) {}
@@ -225,8 +215,9 @@ namespace expression {
 		}
 	};
 	template<typename V>
-	struct ReadableSplit : public Base {
-		EXPRESSION_NAME(ReadableSplit, "const VS*");
+	struct ReadableSplit : public BasePointer {
+		EXPRESSION_NAME(ReadableSplit, "VS*");
+		using Unwrapped = ReadableSplit;
 		ConstSplitPointer<V> pointer;
 
 		ReadableSplit(ConstSplitPointer<V> pointer) : pointer(pointer) {}
@@ -235,6 +226,30 @@ namespace expression {
 			return {pointer.real[i], pointer.imag[i]};
 		}
 	};
+	
+	// Remove `Expression<>` or `WritableExpression<>` layers, and add const to pointers
+	template<class E>
+	typename E::Unwrapped unwrap(E e) {
+		return e;
+	}
+	template<class E>
+	typename E::Unwrapped unwrap(Expression<E> e) {
+		return e;
+	}
+	template<class E>
+	typename E::Unwrapped unwrap(WritableExpression<E> e) {
+		return e;
+	}
+	template<class E>
+	using Unwrap = decltype(unwrap(std::declval<E>()));
+
+	template<class Expr>
+	using ElementType = typename std::decay<decltype(std::declval<Expr>().get(0))>::type;
+	
+	template<class T>
+	static constexpr bool isSplittable() {
+		return std::is_same<T, std::complex<float>>::value || std::is_same<T, std::complex<double>>::value;
+	}
 }
 	
 // + - * / % ^ & | ~ ! = < > += -= *= /= %= ^= &= |= << >> >>= <<= == != <= >= <=>(since C++20) && || ++ -- , ->* -> ( ) [ ]
@@ -242,21 +257,24 @@ namespace expression {
 #define SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Name, OP) \
 namespace expression { \
 	template<class A> \
-	struct Name : public Base { \
+	struct Name : public BaseUnary { \
 		EXPRESSION_NAME(Name, (#Name "<") + A::name() + ">"); \
+		using Unwrapped = Name<Unwrap<A>>; \
 		A a; \
 		Name(const A &a) : a(a) {} \
 		auto get(std::ptrdiff_t i) const -> decltype(OP a.get(i)) const { \
 			return OP a.get(i); \
 		} \
+		template<class T> \
+		using ReplaceWith = Name<T>;\
 	}; \
 	template<class A> \
-	Name<Unwrapped<A>> make##Name(A a) { \
+	Name<Unwrap<A>> make##Name(A a) { \
 		return {a}; \
 	} \
 } \
 template<class A> \
-Expression<expression::Name<A>> operator OP(const Expression<A> &a) { \
+Expression<expression::Name<expression::Unwrap<A>>> operator OP(const Expression<A> &a) { \
 	return {a}; \
 }
 SIGNALSMITH_AUDIO_LINEAR_UNARY_PREFIX(Neg, -)
@@ -270,30 +288,37 @@ Expression<A> operator-(const Expression<expression::Neg<A>> &expr) { \
 #define SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Name, OP) \
 namespace expression { \
 	template<class A, class B> \
-	struct Name : public Base { \
+	struct Name : public BaseBinary { \
 		EXPRESSION_NAME(Name, (#Name "<") + A::name() + "," + B::name() + ">"); \
+		using Unwrapped = Name<Unwrap<A>, Unwrap<B>>; \
 		A a; \
 		B b; \
 		Name(const A &a, const B &b) : a(a), b(b) {} \
 		auto get(std::ptrdiff_t i) const -> decltype(a.get(i) OP b.get(i)) const { \
 			return a.get(i) OP b.get(i); \
 		} \
+		template<class T1, class T2> \
+		using ReplaceWith = Name<T1, T2>;\
+		template<class T> \
+		using ReplaceWithL = Name<T, B>;\
+		template<class T> \
+		using ReplaceWithR = Name<A, T>;\
 	}; \
 	template<class A, class B> \
-	Name<Unwrapped<A>, Unwrapped<B>> make##Name(A a, B b) { \
+	Name<Unwrap<A>, Unwrap<B>> make##Name(A a, B b) { \
 		return {a, b}; \
 	} \
 } \
 template<class A, class B> \
-const Expression<expression::Name<A, B>> operator OP(const Expression<A> &a, const Expression<B> &b) { \
+const Expression<expression::Name<expression::Unwrap<A>, expression::Unwrap<B>>> operator OP(const Expression<A> &a, const Expression<B> &b) { \
 	return {a, b}; \
 } \
 template<class A, class B> \
-const Expression<expression::Name<A, expression::Constant<B>>> operator OP(const Expression<A> &a, const B &b) { \
+const Expression<expression::Name<expression::Unwrap<A>, expression::Constant<B>>> operator OP(const Expression<A> &a, const B &b) { \
 	return {a, b}; \
 } \
 template<class A, class B> \
-const Expression<expression::Name<expression::Constant<A>, B>> operator OP(const A &a, const Expression<B> &b) { \
+const Expression<expression::Name<expression::Constant<A>, expression::Unwrap<B>>> operator OP(const A &a, const Expression<B> &b) { \
 	return {a, b}; \
 }
 SIGNALSMITH_AUDIO_LINEAR_BINARY_INFIX(Add, +)
@@ -307,17 +332,20 @@ namespace expression {
 	template<class A> \
 	struct Name; \
 	template<class A> \
-	Name<Unwrapped<A>> make##Name(A a) { \
+	Name<Unwrap<A>> make##Name(A a) { \
 		return {a}; \
 	} \
 	template<class A> \
-	struct Name : public Base { \
+	struct Name : public BaseUnary { \
 		EXPRESSION_NAME(Name, (#Name "<") + A::name() + ">"); \
+		using Unwrapped = Name<Unwrap<A>>; \
 		A a; \
 		Name(const A &a) : a(a) {} \
 		auto get(std::ptrdiff_t i) const -> decltype(func(a.get(i))) { \
 			return func(a.get(i)); \
 		} \
+		template<class T> \
+		using ReplaceWith = Name<T>;\
 	};
 
 	template<class A>
@@ -385,17 +413,24 @@ namespace expression {
 		return func((decltype(a + b))a, (decltype(a + b))b); \
 	} \
 	template<class A, class B> \
-	struct Name : public Base { \
+	struct Name : public BaseBinary { \
 		EXPRESSION_NAME(Name, (#Name "<") + A::name() + "," + B::name() + ">"); \
+		using Unwrapped = Name<Unwrap<A>, Unwrap<B>>; \
 		A a; \
 		B b; \
 		Name(const A &a, const B &b) : a(a), b(b) {} \
 		auto get(std::ptrdiff_t i) const -> decltype(common##Name(a.get(i), b.get(i))) const { \
 			return common##Name(a.get(i), b.get(i)); \
 		} \
+		template<class T1, class T2> \
+		using ReplaceWith = Name<T1, T2>;\
+		template<class T> \
+		using ReplaceWithL = Name<T, B>;\
+		template<class T> \
+		using ReplaceWithR = Name<A, T>;\
 	}; \
 	template<class A, class B> \
-	Name<Unwrapped<A>, Unwrapped<B>> make##Name(A a, B b) { \
+	Name<Unwrap<A>, Unwrap<B>> make##Name(A a, B b) { \
 		return {a, b}; \
 	}
 	// Min, Max, Dim, Pow, Atan2, Hypot, Copysign, Polar
@@ -424,7 +459,7 @@ struct Expression : public BaseExpr {
 	}
 
 #define SIGNALSMITH_AUDIO_LINEAR_FUNC1(ExprName, methodName) \
-	const Expression<expression::ExprName<BaseExpr>> methodName() const { \
+	const Expression<expression::ExprName<expression::Unwrap<BaseExpr>>> methodName() const { \
 		return {*this}; \
 	}
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Abs, abs)
@@ -501,10 +536,15 @@ struct WritableExpression : public Expression<BaseExpr> {
 };
 
 /// Helper class for temporary storage
-template<typename V, size_t alignBytes=sizeof(V)>
+template<typename V, bool allowAllocation, size_t alignBytes>
 struct Temporary {
-	// This is called if we don't have enough reserved space and end up allocating
-	std::function<void(size_t)> allocationWarning;
+
+	Temporary() {}
+	Temporary(const Temporary &other) = delete;
+	Temporary & operator=(const Temporary &other) = delete;
+	~Temporary() {
+		if (buffer) delete[] buffer;
+	}
 	
 	void reserve(size_t size) {
 		if (buffer) delete[] buffer;
@@ -561,21 +601,24 @@ private:
 		V *result = start;
 		V *newStart = start + size;
 		if (newStart > end) {
+#ifdef SIGNALSMITH_LOG_WARNINGS
+		std::cerr << "Signalsmith Linear: insufficient temporary storage (" << (newStart > buffer) << "\n";
+#endif
+			if (!allowAllocation) return nullptr;
 			// OK, actually we ran out of temporary space, so allocate
 			fallbacks.emplace_back(size + extraAlignmentItems);
 			result = nextAligned(fallbacks.back().data());
 			// but we're not happy about it. >:(
-			if (allocationWarning) allocationWarning(newStart - buffer);
 		}
 		start = nextAligned(newStart);
 		return result;
 	}
 };
 
-template<class Linear, size_t alignBytes=1>
+template<class Linear, bool allowAllocation=true, size_t alignBytes=64>
 struct CachedResults {
-	using TemporaryFloats = Temporary<float, alignBytes>;
-	using TemporaryDoubles = Temporary<double, alignBytes>;
+	using TemporaryFloats = Temporary<float, allowAllocation, alignBytes>;
+	using TemporaryDoubles = Temporary<double, allowAllocation, alignBytes>;
 
 	template<typename V>
 	using WritableReal = typename Linear::template WritableReal<V>;
@@ -616,7 +659,7 @@ struct CachedResults {
 		ConstComplexPointer<float> complex(Expr expr, size_t size) {
 			auto chunk = (*this)(size*2);
 			linear.fill((ComplexPointer<float>)chunk, expr, size);
-			return chunk;
+			return reinterpret_cast<const std::complex<float> *>(chunk);
 		}
 		ConstComplexPointer<float> complex(expression::ReadableComplex<float> expr, size_t) {
 			return expr.pointer;
@@ -703,7 +746,7 @@ struct CachedResults {
 		ConstComplexPointer<double> complex(Expr expr, size_t size) {
 			auto chunk = (*this)(size*2);
 			linear.fill((ComplexPointer<double>)chunk, expr, size);
-			return chunk;
+			return reinterpret_cast<const std::complex<double> *>(chunk);
 		}
 		ConstComplexPointer<double> complex(expression::ReadableComplex<double> expr, size_t) {
 			return expr.pointer;
@@ -775,7 +818,7 @@ struct LinearImplBase {
 
 	template<typename V>
 	struct WritableReal {
-		EXPRESSION_NAME(WritableReal, "V*");
+		EXPRESSION_NAME(WritableReal, "rw V*");
 		Linear &linear;
 		RealPointer<V> pointer;
 		size_t size;
@@ -783,7 +826,8 @@ struct LinearImplBase {
 			static_assert(SIGNALSMITH_IS_TRIVIALLY_COPYABLE(WritableReal), "must be trivially copyable");
 		}
 		
-		operator expression::ReadableReal<V>() const {
+		using Unwrapped = expression::ReadableReal<V>;
+		operator Unwrapped() const {
 			return {pointer};
 		}
 		
@@ -800,13 +844,14 @@ struct LinearImplBase {
 	};
 	template<typename V>
 	struct WritableComplex {
-		EXPRESSION_NAME(WritableComplex, "VC*");
+		EXPRESSION_NAME(WritableComplex, "rw VC*");
 		Linear &linear;
 		ComplexPointer<V> pointer;
 		size_t size;
 		WritableComplex(Linear &linear, ComplexPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
 
-		operator expression::ReadableComplex<V>() const {
+		using Unwrapped = expression::ReadableComplex<V>;
+		operator Unwrapped() const {
 			return {pointer};
 		}
 
@@ -823,13 +868,14 @@ struct LinearImplBase {
 	};
 	template<typename V>
 	struct WritableSplit {
-		EXPRESSION_NAME(WritableSplit, "VS*");
+		EXPRESSION_NAME(WritableSplit, "rw VS*");
 		Linear &linear;
 		SplitPointer<V> pointer;
 		size_t size;
 		WritableSplit(Linear &linear, SplitPointer<V> pointer, size_t size) : linear(linear), pointer(pointer), size(size) {}
 
-		operator expression::ReadableSplit<V>() const {
+		using Unwrapped = expression::ReadableSplit<V>;
+		operator Unwrapped() const {
 			return {pointer};
 		}
 
@@ -892,31 +938,32 @@ struct LinearImplBase {
 		return {self(), SplitPointer<V>{real, imag}, size};
 	}
 
-	template<typename V>
-	WritableExpression<WritableReal<V>> wrap(std::vector<V> &vector) {
+	// Wrap vectors (writable)
+	template<typename V, class A>
+	WritableExpression<WritableReal<V>> wrap(std::vector<V, A> &vector) {
 		return {self(), vector.data(), vector.size()};
 	}
-	template<typename V>
-	WritableExpression<WritableComplex<V>> wrap(std::vector<std::complex<V>> &vector) {
+	template<typename V, class A>
+	WritableExpression<WritableComplex<V>> wrap(std::vector<std::complex<V>, A> &vector) {
 		return {self(), vector.data(), vector.size()};
 	}
-	template<typename V>
-	WritableExpression<WritableSplit<V>> wrap(std::vector<V> &real, std::vector<V> &imag) {
+	template<typename V, class A1, class A2>
+	WritableExpression<WritableSplit<V>> wrap(std::vector<V, A1> &real, std::vector<V, A2> &imag) {
 		SplitPointer<V> pointer{real.data(), imag.data()};
 		size_t size = std::min<size_t>(real.size(), imag.size());
 		return {self(), pointer, size};
 	}
-
-	template<typename V>
-	Expression<expression::ReadableReal<V>> wrap(const std::vector<V> &vector) {
+	// and read-only
+	template<typename V, class A>
+	Expression<expression::ReadableReal<V>> wrap(const std::vector<V, A> &vector) {
 		return {vector.data()};
 	}
-	template<typename V>
-	Expression<expression::ReadableComplex<V>> wrap(const std::vector<std::complex<V>> &vector) {
+	template<typename V, class A>
+	Expression<expression::ReadableComplex<V>> wrap(const std::vector<std::complex<V>, A> &vector) {
 		return {vector.data()};
 	}
-	template<typename V>
-	Expression<expression::ReadableSplit<V>> wrap(const std::vector<V> &real, const std::vector<V> &imag) {
+	template<typename V, class A1, class A2>
+	Expression<expression::ReadableSplit<V>> wrap(const std::vector<V, A1> &real, const std::vector<V, A2> &imag) {
 		ConstSplitPointer<V> pointer{real.data(), imag.data()};
 		return {pointer};
 	}
@@ -952,11 +999,10 @@ struct LinearImplBase {
 		return self().fill(pointer, (Expr &)expr, size);
 	};
 
-
 #define SIGNALSMITH_AUDIO_LINEAR_FUNC1(ExprName, methodName) \
 	template<class A> \
-	auto methodName(A a) -> Expression<decltype(expression::make##ExprName(wrap(a)))> { \
-		return expression::make##ExprName(wrap(a)); \
+	auto methodName(A &&a) -> Expression<decltype(expression::make##ExprName(wrap(std::forward<A>(a))))> { \
+		return expression::make##ExprName(wrap(std::forward<A>(a))); \
 	}
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Abs, abs)
 	SIGNALSMITH_AUDIO_LINEAR_FUNC1(Norm, norm)
@@ -1018,6 +1064,7 @@ protected:
 		return *(Linear *)this;
 	}
 };
+#undef EXPRESSION_NAME
 
 /* SFINAE template for checking that an expression naturally returns a particular item type
 
@@ -1027,10 +1074,7 @@ e.g.
 */
 template<class InputExpr, typename Item, class OutputExpr>
 using ItemType = typename std::enable_if<
-	std::is_same<
-		typename std::decay<decltype(std::declval<InputExpr>().get(0))>::type,
-		Item
-	>::value,
+	std::is_same<expression::ElementType<InputExpr>, Item>::value,
 	OutputExpr
 >::type;
 
@@ -1044,10 +1088,10 @@ struct LinearImpl : public LinearImplBase<useLinear> {
 	// Override .fill() for specific pointer/expressions which you can do quickly.  Calling `cached.realFloat()` etc. will call back to .fill()
 	template<class Expr>
 	void fill(RealPointer<float> pointer, expression::Sqrt<expression::Norm<Expr>> expr, size_t size) {
-		auto floats = cached.floatScope();
+		auto floats = cached.floatScope(); // temporary storage - usually not actually needed for specialisations
 		
 		auto normExpr = expr.a;
-		auto array = floats.real(normExpr, size);
+		auto array = floats.real(normExpr, size); // fill the temporary storage with real values, return a pointer Expr
 		
 		// The idea is to use an existing fast function, but this is an example
 		for (size_t i = 0; i < size; ++i) {
@@ -1056,26 +1100,28 @@ struct LinearImpl : public LinearImplBase<useLinear> {
 	}
 	
 	template<typename V>
-	void reserve(size_t) {}
-	// Makes sure we don't allocate
-	template<>
-	void reserve<float>(size_t size) {
-		cached.reserveFloats(size);
-	}
-	template<>
-	void reserve<double>(size_t size) {
-		cached.reserveDoubles(size);
+	void reserve(size_t size) {
+		// Assume it's either float or double
+		if (sizeof(V) == sizeof(double)) {
+			cached.reserveDoubles(size);
+		} else if (sizeof(V) == sizeof(float)) {
+			cached.reserveFloats(size);
+		}
 	}
 private:
-	CachedResults<LinearImpl, 32> cached;
+	CachedResults<LinearImpl, true, 16> cached;
 };
 
 }}; // namespace
 
 #if defined(SIGNALSMITH_USE_ACCELERATE)
 #	include "./platform/linear-accelerate.h"
-#elif 0//defined(SIGNALSMITH_USE_IPP)
-#	include "./platform/linear-ipp.h"
+#elif defined(SIGNALSMITH_USE_XSIMD)
+#	include "./platform/linear-xsimd.h"
+#elif defined(SIGNALSMITH_USE_CMSISDSP)
+#	include "./platform/linear-cmsisdsp.h"
+//#elif defined(SIGNALSMITH_USE_IPP)
+//#	include "./platform/linear-ipp.h"
 #endif
 
 #undef SIGNALSMITH_IS_TRIVIALLY_COPYABLE

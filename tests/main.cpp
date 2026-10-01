@@ -1,5 +1,5 @@
 #include <iostream>
-#define LOG_EXPR(expr) std::cout << #expr << " = " << (expr) << std::endl;
+#define LOG_EXPR(...) std::cout << #__VA_ARGS__ " = " << (__VA_ARGS__) << std::endl;
 
 #include "./test-linear.h"
 #include "./test-ffts.h"
@@ -31,6 +31,16 @@ int main(int argc, char *argv[]) {
 	std::cout << u8"✅ SIGNALSMITH_USE_PFFFT_DOUBLE\n";
 #else
 	std::cout << u8"❌ SIGNALSMITH_USE_PFFFT_DOUBLE\n";
+#endif
+#ifdef SIGNALSMITH_USE_XSIMD
+	std::cout << u8"✅ SIGNALSMITH_USE_XSIMD\n";
+#else
+	std::cout << u8"❌ SIGNALSMITH_USE_XSIMD\n";
+#endif
+#ifdef SIGNALSMITH_USE_CMSISDSP
+	std::cout << u8"✅ SIGNALSMITH_USE_CMSISDSP\n";
+#else
+	std::cout << u8"❌ SIGNALSMITH_USE_CMSISDSP\n";
 #endif
 #ifdef __FAST_MATH__
 	std::cout << u8"✅ __FAST_MATH__\n";

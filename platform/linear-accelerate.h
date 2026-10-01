@@ -8,51 +8,10 @@
 #endif
 
 #include <cstring> // std::memcpy
-#include <iostream> // We log to stderr when an expression is unoptimised
+
+#include "./basic-fill-warnings.h"
 
 namespace signalsmith { namespace linear {
-
-template<class T>
-static std::string typeName() {
-	return typeid(T).name();
-}
-template<>
-std::string typeName<float>() {
-	return "float";
-}
-template<>
-std::string typeName<double>() {
-	return "double";
-}
-template<>
-std::string typeName<std::complex<float>>() {
-	return "complex<float>";
-}
-template<>
-std::string typeName<std::complex<double>>() {
-	return "complex<double>";
-}
-template<>
-std::string typeName<const std::complex<float>>() {
-	return "const complex<float>";
-}
-template<>
-std::string typeName<const std::complex<double>>() {
-	return "const complex<double>";
-}
-static size_t _basicFillWarningCounter = 1;
-static void basicFillWarningReset() {
-	// All warnings will print again
-	++_basicFillWarningCounter;
-}
-template<class Expr>
-static void basicFillWarning() {
-	static size_t counter = 0;
-	if (counter != _basicFillWarningCounter) {
-		counter = _basicFillWarningCounter;
-		std::cerr << "used basic .fill() for " << Expr::name() << " -> " << typeName<decltype(std::declval<Expr>().get(0))>() << "\n";
-	}
-}
 
 template<>
 struct LinearImpl<true> : public LinearImplBase<true> {
@@ -63,15 +22,13 @@ struct LinearImpl<true> : public LinearImplBase<true> {
 	}
 
 	template<class V>
-	void reserve(size_t) {}
-	
-	template<>
-	void reserve<float>(size_t size) {
-		cached.reserveFloats(size*4);
-	}
-	template<>
-	void reserve<double>(size_t size) {
-		cached.reserveDoubles(size*4);
+	void reserve(size_t size) {
+		// assume float/doubles if the right size
+		if (sizeof(V) == sizeof(float)) {
+			cached.reserveFloats(size*4);
+		} else if (sizeof(V) == sizeof(double)) {
+			cached.reserveDoubles(size*4);
+		}
 	}
 
 	template<class Pointer, class Expr>
@@ -356,6 +313,7 @@ private:
 		vDSP_func##D(&a, 1, &p, 1, size); \
 	}
 	SIGNALSMITH_AUDIO_LINEAR_OP1_R(Abs)
+	//SIGNALSMITH_AUDIO_LINEAR_TREE1_RR(Abs, vDSP_zabs); - why is this commented out?
 	SIGNALSMITH_AUDIO_LINEAR_TREE1_RC(Abs, vDSP_zvabs);
 	SIGNALSMITH_AUDIO_LINEAR_OP1_R(Neg)
 	SIGNALSMITH_AUDIO_LINEAR_OP1_C(Neg)
@@ -418,14 +376,14 @@ private:
 	template<class A, class B> \
 	void fill##Name(RealPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto floats = cached.floatScope(); \
-		auto *a = floats.real(expr.a, size, pointer); \
+		auto *a = floats.real(expr.a, size); \
 		auto *b = floats.real(expr.b, size); \
 		vDSP_func(b, 1, a, 1, pointer, 1, size); \
 	} \
 	template<class A, class B> \
 	void fill##Name(RealPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto doubles = cached.doubleScope(); \
-		auto *a = doubles.real(expr.a, size, pointer); \
+		auto *a = doubles.real(expr.a, size); \
 		auto *b = doubles.real(expr.b, size); \
 		vDSP_func##D(b, 1, a, 1, pointer, 1, size); \
 	}
@@ -505,7 +463,7 @@ private:
 	template<class A, class B> \
 	void fill##Name(RealPointer<float> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto floats = cached.floatScope(); \
-		auto *a = floats.real(expr.a, size, pointer); \
+		auto *a = floats.real(expr.a, size); \
 		auto *b = floats.real(expr.b, size); \
 		int intSize = int(size); \
 		vForce_float(pointer, a, b, &intSize); \
@@ -513,7 +471,7 @@ private:
 	template<class A, class B> \
 	void fill##Name(RealPointer<double> pointer, expression::Name<A, B> expr, size_t size) { \
 		auto doubles = cached.doubleScope(); \
-		auto *a = doubles.real(expr.a, size, pointer); \
+		auto *a = doubles.real(expr.a, size); \
 		auto *b = doubles.real(expr.b, size); \
 		int intSize = int(size); \
 		vForce_double(pointer, a, b, &intSize); \
@@ -539,7 +497,7 @@ private:
 		auto floats = cached.floatScope(); \
 		auto *a = floats.real(expr.a.a, size); \
 		auto *b = floats.real(expr.a.b, size); \
-		auto *c = floats.real(expr.b, size, pointer); \
+		auto *c = floats.real(expr.b, size); \
 		vDSP_func(a, 1, b, 1, c, 1, pointer, 1, size); \
 	} \
 	template<class A, class B, class C> \
@@ -547,7 +505,7 @@ private:
 		auto doubles = cached.doubleScope(); \
 		auto *a = doubles.real(expr.a.a, size); \
 		auto *b = doubles.real(expr.a.b, size); \
-		auto *c = doubles.real(expr.b, size, pointer); \
+		auto *c = doubles.real(expr.b, size); \
 		vDSP_func##D(a, 1, b, 1, c, 1, pointer, 1, size); \
 	}
 	SIGNALSMITH_AUDIO_LINEAR_Op3L_R(Mul, Add)
@@ -587,7 +545,7 @@ private:
 //	SIGNALSMITH_AUDIO_LINEAR_OP2_C(Div)
 
 protected:
-	CachedResults<LinearImpl, 32> cached;
+	CachedResults<LinearImpl> cached;
 
 	static DSPSplitComplex dspSplit(ConstSplitPointer<float> x) {
 		DSPSplitComplex dsp;
