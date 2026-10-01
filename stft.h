@@ -452,6 +452,35 @@ struct DynamicSTFT {
 	COMPAT_SPELLING(synthesiseStep, synthesizeStep);
 	COMPAT_SPELLING(synthesiseSteps, synthesizeSteps);
 
+	// Parity-test helper — windowed-input → modified-RealFFT for one frame in
+	// isolation, bypassing the ring buffer. Not used by the live pipeline.
+	void analyzeFrameDirect(size_t /*channel*/, const Sample *time_in, Complex *freq_out) {
+		for (size_t i = 0; i < _analysisOffset; ++i) {
+			Sample w = modified ? -_analysisWindow[i] : _analysisWindow[i];
+			timeBuffer[i + (_fftSamples - _analysisOffset)] = time_in[i] * w;
+		}
+		for (size_t i = _analysisOffset; i < _blockSamples; ++i) {
+			timeBuffer[i - _analysisOffset] = time_in[i] * _analysisWindow[i];
+		}
+		for (size_t i = _blockSamples - _analysisOffset; i < _fftSamples - _analysisOffset; ++i) {
+			timeBuffer[i] = 0;
+		}
+		fft.fft(timeBuffer.data(), freq_out);
+	}
+
+	// Parity-test helper — inverse-RealFFT → synth-window → accumulate into
+	// time_out + window_product_out. Bypasses ring buffer.
+	void synthFrameDirect(size_t /*channel*/, const Complex *freq_in,
+	                      Sample *time_out, Sample *window_product_out) {
+		fft.ifft(freq_in, timeBuffer.data());
+		for (size_t bi = 0; bi < _blockSamples; ++bi) {
+			Sample wa = _analysisWindow[bi];
+			Sample ws = _synthesisWindow[bi];
+			time_out[bi] += timeBuffer[bi] * ws;
+			window_product_out[bi] += wa * ws * Sample(_fftSamples);
+		}
+	}
+
 	/// Input (only available so we can save/restore the input state)
 	struct Input {
 		void swap(Input &other) {
